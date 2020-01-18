@@ -29,7 +29,6 @@ private:
     RigType m_rigType = RigType::None;
     Outcome *m_outcome = nullptr;
     MeshLoader *m_resultMesh = nullptr;
-    Rigger *m_autoRigger = nullptr;
     std::vector<RiggerBone> *m_resultBones = nullptr;
     std::map<int, RiggerVertexWeights> *m_resultWeights = nullptr;
     std::vector<std::pair<QtMsgType, QString>> m_messages;

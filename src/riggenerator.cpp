@@ -4,9 +4,6 @@
 #include <cmath>
 #include <QVector2D>
 #include "riggenerator.h"
-#include "riggerconstruct.h"
-#include "boundingboxmesh.h"
-#include "triangleislandslink.h"
 
 RigGenerator::RigGenerator(RigType rigType, const Outcome &outcome) :
     m_rigType(rigType),
@@ -18,7 +15,6 @@ RigGenerator::~RigGenerator()
 {
     delete m_outcome;
     delete m_resultMesh;
-    delete m_autoRigger;
     delete m_resultBones;
     delete m_resultWeights;
 }
@@ -66,102 +62,14 @@ void RigGenerator::generate()
     if (nullptr == m_outcome->triangleSourceNodes())
         return;
     
-    std::vector<QVector3D> inputVerticesPositions;
-    std::set<MeshSplitterTriangle> inputTriangles;
-    
+    const auto &inputVerticesPositions = m_outcome->vertices;
     const auto &triangleSourceNodes = *m_outcome->triangleSourceNodes();
     const std::vector<std::vector<QVector3D>> *triangleVertexNormals = m_outcome->triangleVertexNormals();
     const std::vector<QVector3D> *triangleTangents = m_outcome->triangleTangents();
     
-    for (const auto &vertex: m_outcome->vertices) {
-        inputVerticesPositions.push_back(vertex);
-    }
+    // TODO:
     
-    std::map<std::pair<QUuid, QUuid>, std::tuple<BoneMark, SkeletonSide, QVector3D, std::set<MeshSplitterTriangle>, float>> markedNodes;
-    for (const auto &bmeshNode: m_outcome->nodes) {
-        if (bmeshNode.boneMark == BoneMark::None)
-            continue;
-        SkeletonSide boneSide = SkeletonSide::None;
-        if (BoneMarkHasSide(bmeshNode.boneMark)) {
-            boneSide = bmeshNode.origin.x() > 0 ? SkeletonSide::Left : SkeletonSide::Right;
-        }
-        //qDebug() << "Add bone mark:" << BoneMarkToString(bmeshNode.boneMark) << "side:" << SkeletonSideToDispName(boneSide);
-        markedNodes[std::make_pair(bmeshNode.partId, bmeshNode.nodeId)] = std::make_tuple(bmeshNode.boneMark, boneSide, bmeshNode.origin, std::set<MeshSplitterTriangle>(), bmeshNode.radius);
-    }
-    
-    for (size_t triangleIndex = 0; triangleIndex < m_outcome->triangles.size(); triangleIndex++) {
-        const auto &sourceTriangle = m_outcome->triangles[triangleIndex];
-        MeshSplitterTriangle newTriangle;
-        for (int i = 0; i < 3; i++)
-            newTriangle.indices[i] = sourceTriangle[i];
-        auto findMarkedNodeResult = markedNodes.find(triangleSourceNodes[triangleIndex]);
-        if (findMarkedNodeResult != markedNodes.end()) {
-            auto &markedNode = findMarkedNodeResult->second;
-            std::get<3>(markedNode).insert(newTriangle);
-        }
-        inputTriangles.insert(newTriangle);
-    }
-    
-    std::vector<std::tuple<BoneMark, SkeletonSide, QVector3D, std::set<MeshSplitterTriangle>, float>> markedNodesList;
-    for (const auto &markedNode: markedNodes) {
-        markedNodesList.push_back(markedNode.second);
-    }
-    
-    // Combine the overlapped marks
-    std::vector<std::tuple<BoneMark, SkeletonSide, QVector3D, std::set<MeshSplitterTriangle>, float>> combinedMarkedNodesList;
-    std::set<size_t> processedNodes;
-    for (size_t i = 0; i < markedNodesList.size(); ++i) {
-        if (processedNodes.find(i) != processedNodes.end())
-            continue;
-        const auto &first = markedNodesList[i];
-        std::tuple<BoneMark, SkeletonSide, QVector3D, std::set<MeshSplitterTriangle>, float> newNodes;
-        size_t combinedNum = 1;
-        newNodes = first;
-        for (size_t j = i + 1; j < markedNodesList.size(); ++j) {
-            const auto &second = markedNodesList[j];
-            if (std::get<0>(first) == std::get<0>(second) &&
-                    std::get<1>(first) == std::get<1>(second)) {
-                if ((std::get<2>(first) - std::get<2>(second)).lengthSquared() <
-                        std::pow((std::get<4>(first) + std::get<4>(second)), 2)) {
-                    processedNodes.insert(j);
-                    
-                    std::get<2>(newNodes) += std::get<2>(second);
-                    for (const auto &triangle: std::get<3>(second))
-                        std::get<3>(newNodes).insert(triangle);
-                    std::get<4>(newNodes) += std::get<4>(second);
-                    ++combinedNum;
-                }
-            }
-        }
-        if (combinedNum > 1) {
-            std::get<2>(newNodes) /= combinedNum;
-            std::get<4>(newNodes) /= combinedNum;
-            
-            qDebug() << "Combined" << combinedNum << "on mark:" << BoneMarkToString(std::get<0>(newNodes)) << "side:" << SkeletonSideToDispName(std::get<1>(newNodes));
-        }
-        combinedMarkedNodesList.push_back(newNodes);
-    }
-    
-    std::vector<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>> triangleLinks;
-    triangleIslandsLink(*m_outcome, triangleLinks);
-    m_outcome->setTriangleLinks(triangleLinks);
-    
-    m_autoRigger = newRigger(m_rigType, inputVerticesPositions, inputTriangles, triangleLinks);
-    if (nullptr == m_autoRigger) {
-        qDebug() << "Unsupported rig type:" << RigTypeToString(m_rigType);
-    } else {
-        for (const auto &markedNode: combinedMarkedNodesList) {
-            const auto &triangles = std::get<3>(markedNode);
-            if (triangles.empty())
-                continue;
-            m_autoRigger->addMarkGroup(std::get<0>(markedNode), std::get<1>(markedNode),
-                std::get<2>(markedNode),
-                std::get<4>(markedNode),
-                std::get<3>(markedNode));
-        }
-        m_isSucceed = m_autoRigger->rig();
-    }
-    
+    /*
     if (m_isSucceed) {
         qDebug() << "Rig succeed";
     } else {
@@ -250,22 +158,9 @@ void RigGenerator::generate()
     ShaderVertex *edgeVertices = nullptr;
     int edgeVerticesNum = 0;
     
-    /*
-    if (m_isSucceed) {
-        const auto &resultBones = m_autoRigger->resultBones();
-        std::vector<std::tuple<QVector3D, QVector3D, float>> boxes;
-        for (const auto &bone: resultBones) {
-            //if (bone.name.startsWith("Virtual") || bone.name.startsWith("Body"))
-            //    continue;
-            boxes.push_back(std::make_tuple(bone.headPosition, bone.tailPosition, 
-                qMax(bone.headRadius, bone.tailRadius)));
-        }
-        edgeVertices = buildBoundingBoxMeshEdges(boxes, &edgeVerticesNum);
-    }
-    */
-    
     m_resultMesh = new MeshLoader(triangleVertices, triangleVerticesNum,
         edgeVertices, edgeVerticesNum);
+    */
 }
 
 void RigGenerator::process()

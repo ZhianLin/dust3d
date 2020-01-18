@@ -351,14 +351,8 @@ HEADERS += src/uvunwrap.h
 SOURCES += src/triangletangentresolve.cpp
 HEADERS += src/triangletangentresolve.h
 
-SOURCES += src/animalrigger.cpp
-HEADERS += src/animalrigger.h
-
 SOURCES += src/animalposer.cpp
 HEADERS += src/animalposer.h
-
-SOURCES += src/riggerconstruct.cpp
-HEADERS += src/riggerconstruct.h
 
 SOURCES += src/poserconstruct.cpp
 HEADERS += src/poserconstruct.h
