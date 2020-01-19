@@ -1,9 +1,52 @@
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
 #include <QGuiApplication>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <cmath>
 #include <QVector2D>
+#include <queue>
 #include "riggenerator.h"
+
+class PartEndpointsStitcher
+{
+public:
+    PartEndpointsStitcher(const std::vector<OutcomeNode> *nodes,
+            const std::vector<std::pair<QUuid, size_t>> *partEndpoints,
+            std::vector<std::pair<std::pair<QUuid, size_t>, float>> *stitchResult) :
+        m_nodes(nodes),
+        m_partEndpoints(partEndpoints),
+        m_stitchResult(stitchResult)
+    {
+    }
+    void operator()(const tbb::blocked_range<size_t> &range) const
+    {
+        for (size_t i = range.begin(); i != range.end(); ++i) {
+            std::vector<std::pair<std::pair<QUuid, size_t>, float>> distance2WithNodes;
+            const auto &endpoint = (*m_partEndpoints)[i];
+            const auto &endpointNode = (*m_nodes)[endpoint.second];
+            for (size_t j = 0; j < m_nodes->size(); ++j) {
+                const auto &node = (*m_nodes)[j];
+                if (node.partId == endpoint.first ||
+                        node.mirroredByPartId == endpoint.first ||
+                        node.mirrorFromPartId == endpoint.first) {
+                    continue;
+                }
+                distance2WithNodes.push_back({{node.partId, j},
+                    (endpointNode.origin - node.origin).lengthSquared()});
+            }
+            if (distance2WithNodes.empty())
+                continue;
+            (*m_stitchResult)[i] = *std::min_element(distance2WithNodes.begin(), distance2WithNodes.end(), [](const std::pair<std::pair<QUuid, size_t>, float> &first, const std::pair<std::pair<QUuid, size_t>, float> &second) {
+                return first.second < second.second;
+            });
+        }
+    }
+private:
+    const std::vector<OutcomeNode> *m_nodes = nullptr;
+    const std::vector<std::pair<QUuid, size_t>> *m_partEndpoints = nullptr;
+    std::vector<std::pair<std::pair<QUuid, size_t>, float>> *m_stitchResult = nullptr;
+};
 
 RigGenerator::RigGenerator(RigType rigType, const Outcome &outcome) :
     m_rigType(rigType),
@@ -57,110 +100,129 @@ const std::vector<std::pair<QtMsgType, QString>> &RigGenerator::messages()
     return m_messages;
 }
 
-void RigGenerator::generate()
+void RigGenerator::buildNeighborMap()
 {
     if (nullptr == m_outcome->triangleSourceNodes())
         return;
     
-    const auto &inputVerticesPositions = m_outcome->vertices;
-    const auto &triangleSourceNodes = *m_outcome->triangleSourceNodes();
-    const std::vector<std::vector<QVector3D>> *triangleVertexNormals = m_outcome->triangleVertexNormals();
-    const std::vector<QVector3D> *triangleTangents = m_outcome->triangleTangents();
-    
-    // TODO:
-    
-    /*
-    if (m_isSucceed) {
-        qDebug() << "Rig succeed";
-    } else {
-        qDebug() << "Rig failed";
+    std::map<std::pair<QUuid, QUuid>, size_t> nodeIdToIndexMap;
+    for (size_t i = 0; i < m_outcome->bodyNodes.size(); ++i) {
+        const auto &node = m_outcome->bodyNodes[i];
+        nodeIdToIndexMap.insert({{node.partId, node.nodeId}, i});
+        m_neighborMap.insert({i, {}});
     }
-    if (nullptr != m_autoRigger) {
-        m_messages = m_autoRigger->messages();
-        for (const auto &message: m_autoRigger->messages()) {
-            qDebug() << "errorType:" << message.first << "Message:" << message.second;
+    
+    for (const auto &it: m_outcome->bodyEdges) {
+        const auto &findSource = nodeIdToIndexMap.find(it.first);
+        if (findSource == nodeIdToIndexMap.end())
+            continue;
+        const auto &findTarget = nodeIdToIndexMap.find(it.second);
+        if (findTarget == nodeIdToIndexMap.end())
+            continue;
+        m_neighborMap[findSource->second].insert(findTarget->second);
+        m_neighborMap[findTarget->second].insert(findSource->second);
+    }
+    
+    std::vector<std::pair<QUuid, size_t>> partEndpoints;
+    for (const auto &it: m_neighborMap) {
+        if (it.second.size() >= 2) {
+            continue;
+        }
+        const auto &node = m_outcome->bodyNodes[it.first];
+        partEndpoints.push_back({node.partId, it.first});
+    }
+    
+    std::vector<std::pair<std::pair<QUuid, size_t>, float>> stitchResult(partEndpoints.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, partEndpoints.size()),
+        PartEndpointsStitcher(&m_outcome->bodyNodes, &partEndpoints,
+            &stitchResult));
+    
+    for (size_t i = 0; i < stitchResult.size(); ++i) {
+        const auto &endpoint = partEndpoints[i];
+        const auto &neighbors = m_neighborMap[endpoint.second];
+        float distance2WithNeighbor = std::numeric_limits<float>::max();
+        if (!neighbors.empty()) {
+            distance2WithNeighbor = (m_outcome->bodyNodes[endpoint.second].origin - m_outcome->bodyNodes[*neighbors.begin()].origin).lengthSquared();
+        }
+        const auto &result = stitchResult[i];
+        if (result.second >= distance2WithNeighbor)
+            continue;
+        auto fromNodeIndex = nodeIdToIndexMap[{endpoint.first, m_outcome->bodyNodes[endpoint.second].nodeId}];
+        auto toNodeIndex = nodeIdToIndexMap[{result.first.first, m_outcome->bodyNodes[result.first.second].nodeId}];
+        m_neighborMap[fromNodeIndex].insert(toNodeIndex);
+        m_neighborMap[toNodeIndex].insert(fromNodeIndex);
+    }
+}
+
+void RigGenerator::segment()
+{
+    for (size_t nodeIndex = 0; nodeIndex < m_outcome->bodyNodes.size(); ++nodeIndex) {
+        const auto &node = m_outcome->bodyNodes[nodeIndex];
+        if (!BoneMarkIsBranchNode(node.boneMark))
+            continue;
+        std::unordered_set<size_t> left;
+        std::unordered_set<size_t> right;
+        splitByNodeIndex(nodeIndex, &left, &right);
+        printf("[%s] nodeId:%s\r\n", BoneMarkToString(node.boneMark), node.nodeId.toString().toUtf8().constData());
+        printf("left: ");
+        for (const auto &it: left)
+            printf("%lu ", it);
+        printf("\r\n");
+        printf("right: ");
+        for (const auto &it: right)
+            printf("%lu ", it);
+        printf("\r\n");
+    }
+}
+
+void RigGenerator::splitByNodeIndex(size_t nodeIndex,
+        std::unordered_set<size_t> *left,
+        std::unordered_set<size_t> *right)
+{
+    const auto &neighbors = m_neighborMap[nodeIndex];
+    printf("neighbors.size:%lu\r\n", neighbors.size());
+    if (2 != neighbors.size()) {
+        return;
+    }
+    {
+        std::unordered_set<size_t> visited;
+        visited.insert(*neighbors.begin());
+        collectNodes(nodeIndex, left, &visited);
+        left->erase(nodeIndex);
+    }
+    {
+        std::unordered_set<size_t> visited;
+        visited.insert(*(++neighbors.begin()));
+        collectNodes(nodeIndex, right, &visited);
+        right->erase(nodeIndex);
+    }
+}
+
+void RigGenerator::collectNodes(size_t fromNodeIndex,
+        std::unordered_set<size_t> *container,
+        std::unordered_set<size_t> *visited)
+{
+    std::queue<size_t> waitQueue;
+    waitQueue.push(fromNodeIndex);
+    while (!waitQueue.empty()) {
+        auto nodeIndex = waitQueue.front();
+        waitQueue.pop();
+        if (visited->find(nodeIndex) != visited->end())
+            continue;
+        visited->insert(nodeIndex);
+        container->insert(nodeIndex);
+        for (const auto &neighborNodeIndex: m_neighborMap[nodeIndex]) {
+            if (visited->find(neighborNodeIndex) != visited->end())
+                continue;
+            waitQueue.push(neighborNodeIndex);
         }
     }
-    
-    // Blend vertices colors according to bone weights
-    
-    std::vector<QColor> inputVerticesColors(m_outcome->vertices.size(), Qt::black);
-    if (m_isSucceed) {
-        const auto &resultWeights = m_autoRigger->resultWeights();
-        const auto &resultBones = m_autoRigger->resultBones();
-        
-        m_resultWeights = new std::map<int, RiggerVertexWeights>;
-        *m_resultWeights = resultWeights;
-        
-        m_resultBones = new std::vector<RiggerBone>;
-        *m_resultBones = resultBones;
-        
-        for (const auto &weightItem: resultWeights) {
-            size_t vertexIndex = weightItem.first;
-            const auto &weight = weightItem.second;
-            int blendR = 0, blendG = 0, blendB = 0;
-            for (int i = 0; i < 4; i++) {
-                int boneIndex = weight.boneIndices[i];
-                if (boneIndex > 0) {
-                    const auto &bone = resultBones[boneIndex];
-                    blendR += bone.color.red() * weight.boneWeights[i];
-                    blendG += bone.color.green() * weight.boneWeights[i];
-                    blendB += bone.color.blue() * weight.boneWeights[i];
-                }
-            }
-            QColor blendColor = QColor(blendR, blendG, blendB, 255);
-            inputVerticesColors[vertexIndex] = blendColor;
-        }
-    }
-    
-    // Create mesh for demo
-    
-    ShaderVertex *triangleVertices = nullptr;
-    int triangleVerticesNum = 0;
-    if (m_isSucceed) {
-        triangleVertices = new ShaderVertex[m_outcome->triangles.size() * 3];
-        const QVector3D defaultUv = QVector3D(0, 0, 0);
-        const QVector3D defaultTangents = QVector3D(0, 0, 0);
-        for (size_t triangleIndex = 0; triangleIndex < m_outcome->triangles.size(); triangleIndex++) {
-            const auto &sourceTriangle = m_outcome->triangles[triangleIndex];
-            const auto *sourceTangent = &defaultTangents;
-            if (nullptr != triangleTangents)
-                sourceTangent = &(*triangleTangents)[triangleIndex];
-            for (int i = 0; i < 3; i++) {
-                ShaderVertex &currentVertex = triangleVertices[triangleVerticesNum++];
-                const auto &sourcePosition = inputVerticesPositions[sourceTriangle[i]];
-                const auto &sourceColor = inputVerticesColors[sourceTriangle[i]];
-                const auto *sourceNormal = &defaultUv;
-                if (nullptr != triangleVertexNormals)
-                    sourceNormal = &(*triangleVertexNormals)[triangleIndex][i];
-                currentVertex.posX = sourcePosition.x();
-                currentVertex.posY = sourcePosition.y();
-                currentVertex.posZ = sourcePosition.z();
-                currentVertex.texU = 0;
-                currentVertex.texV = 0;
-                currentVertex.colorR = sourceColor.redF();
-                currentVertex.colorG = sourceColor.greenF();
-                currentVertex.colorB = sourceColor.blueF();
-                currentVertex.normX = sourceNormal->x();
-                currentVertex.normY = sourceNormal->y();
-                currentVertex.normZ = sourceNormal->z();
-                currentVertex.metalness = MeshLoader::m_defaultMetalness;
-                currentVertex.roughness = MeshLoader::m_defaultRoughness;
-                currentVertex.tangentX = sourceTangent->x();
-                currentVertex.tangentY = sourceTangent->y();
-                currentVertex.tangentZ = sourceTangent->z();
-            }
-        }
-    }
-    
-    // Create bone bounding box for demo
-    
-    ShaderVertex *edgeVertices = nullptr;
-    int edgeVerticesNum = 0;
-    
-    m_resultMesh = new MeshLoader(triangleVertices, triangleVerticesNum,
-        edgeVertices, edgeVerticesNum);
-    */
+}
+
+void RigGenerator::generate()
+{
+    buildNeighborMap();
+    segment();
 }
 
 void RigGenerator::process()

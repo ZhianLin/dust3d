@@ -1076,7 +1076,7 @@ MeshCombiner::Mesh *MeshGenerator::combineComponentMesh(const QString &component
             std::vector<std::vector<size_t>> newQuads;
             std::vector<std::vector<size_t>> newTriangles;
             std::vector<std::tuple<QVector3D, float, size_t>> interpolatedNodes;
-            buildInterpolatedNodes(componentCache.outcomeNodes,
+            Outcome::buildInterpolatedNodes(componentCache.outcomeNodes,
                 componentCache.outcomeEdges,
                 &interpolatedNodes);
             remesh(componentCache.outcomeNodes,
@@ -1121,46 +1121,6 @@ MeshCombiner::Mesh *MeshGenerator::combineComponentMesh(const QString &component
     }
     
     return mesh;
-}
-
-void MeshGenerator::buildInterpolatedNodes(const std::vector<OutcomeNode> &nodes,
-        const std::vector<std::pair<std::pair<QUuid, QUuid>, std::pair<QUuid, QUuid>>> &edges,
-        std::vector<std::tuple<QVector3D, float, size_t>> *targetNodes)
-{
-    targetNodes->clear();
-    std::map<std::pair<QUuid, QUuid>, size_t> nodeMap;
-    for (size_t nodeIndex = 0; nodeIndex < nodes.size(); ++nodeIndex) {
-        const auto &it = nodes[nodeIndex];
-        nodeMap.insert({{it.partId, it.nodeId}, nodeIndex});
-        targetNodes->push_back(std::make_tuple(it.origin, it.radius, nodeIndex));
-    }
-    for (const auto &it: edges) {
-        auto findFirst = nodeMap.find(it.first);
-        if (findFirst == nodeMap.end())
-            continue;
-        auto findSecond = nodeMap.find(it.second);
-        if (findSecond == nodeMap.end())
-            continue;
-        const auto &firstNode = nodes[findFirst->second];
-        const auto &secondNode = nodes[findSecond->second];
-        float length = (firstNode.origin - secondNode.origin).length();
-        float segments = length / 0.02;
-        if (qFuzzyIsNull(segments))
-            continue;
-        if (segments > 100)
-            segments = 100;
-        float segmentLength = 1.0f / segments;
-        float offset = segmentLength;
-        while (offset < 1.0f) {
-            float radius = firstNode.radius * (1.0f - offset) + secondNode.radius * offset;
-            targetNodes->push_back(std::make_tuple(
-                firstNode.origin * (1.0f - offset) + secondNode.origin * offset,
-                radius * 3.0,
-                offset <= 0.5 ? findFirst->second : findSecond->second
-            ));
-            offset += segmentLength;
-        }
-    }
 }
 
 MeshCombiner::Mesh *MeshGenerator::combineMultipleMeshes(const std::vector<std::tuple<MeshCombiner::Mesh *, CombineMode, QString>> &multipleMeshes, bool recombine)
@@ -1456,6 +1416,7 @@ void MeshGenerator::generate()
         }
         
         m_outcome->nodes = componentCache.outcomeNodes;
+        m_outcome->edges = componentCache.outcomeEdges;
         m_outcome->paintMaps = componentCache.outcomePaintMaps;
         recoverQuads(combinedVertices, combinedFaces, componentCache.sharedQuadEdges, m_outcome->triangleAndQuads);
             m_outcome->nodeVertices = componentCache.outcomeNodeVertices;
@@ -1465,6 +1426,11 @@ void MeshGenerator::generate()
     
     // Recursively check uncombined components
     collectUncombinedComponent(QUuid().toString());
+    
+    // Fetch nodes as body nodes before cloth nodes collecting
+    m_outcome->bodyNodes = m_outcome->nodes;
+    m_outcome->bodyEdges = m_outcome->edges;
+    
     collectClothComponent(QUuid().toString());
     
     // Collect errored parts
@@ -1605,6 +1571,7 @@ void MeshGenerator::collectUncombinedComponent(const QString &componentIdString)
         }
         
         m_outcome->nodes.insert(m_outcome->nodes.end(), componentCache.outcomeNodes.begin(), componentCache.outcomeNodes.end());
+        m_outcome->edges.insert(m_outcome->edges.end(), componentCache.outcomeEdges.begin(), componentCache.outcomeEdges.end());
         m_outcome->nodeVertices.insert(m_outcome->nodeVertices.end(), componentCache.outcomeNodeVertices.begin(), componentCache.outcomeNodeVertices.end());
         m_outcome->paintMaps.insert(m_outcome->paintMaps.end(), componentCache.outcomePaintMaps.begin(), componentCache.outcomePaintMaps.end());
         
@@ -1680,6 +1647,7 @@ void MeshGenerator::collectClothComponent(const QString &componentIdString)
         clothMesh.clothIteration = componentClothIteration(component);
         clothMesh.outcomeNodeVertices = &componentCache.outcomeNodeVertices;
         m_outcome->nodes.insert(m_outcome->nodes.end(), componentCache.outcomeNodes.begin(), componentCache.outcomeNodes.end());
+        m_outcome->edges.insert(m_outcome->edges.end(), componentCache.outcomeEdges.begin(), componentCache.outcomeEdges.end());
     }
     simulateClothMeshes(&clothMeshes,
         &m_clothCollisionVertices,

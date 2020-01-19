@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QThread>
 #include <QDebug>
+#include <unordered_set>
 #include "outcome.h"
 #include "meshloader.h"
 #include "rigger.h"
@@ -32,7 +33,16 @@ private:
     std::vector<RiggerBone> *m_resultBones = nullptr;
     std::map<int, RiggerVertexWeights> *m_resultWeights = nullptr;
     std::vector<std::pair<QtMsgType, QString>> m_messages;
+    std::map<size_t, std::unordered_set<size_t>> m_neighborMap;
     bool m_isSucceed = false;
+    void buildNeighborMap();
+    void segment();
+    void splitByNodeIndex(size_t nodeIndex,
+        std::unordered_set<size_t> *left,
+        std::unordered_set<size_t> *right);
+    void collectNodes(size_t fromNodeIndex,
+        std::unordered_set<size_t> *container,
+        std::unordered_set<size_t> *visited);
 };
 
 #endif
