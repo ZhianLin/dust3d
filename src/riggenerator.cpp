@@ -156,13 +156,71 @@ void RigGenerator::buildNeighborMap()
 
 void RigGenerator::segment()
 {
+    std::vector<std::pair<size_t, std::unordered_set<size_t>>> segments;
+    std::unordered_set<size_t> middle;
+    size_t middleStartNodeIndex = m_outcome->bodyNodes.size();
     for (size_t nodeIndex = 0; nodeIndex < m_outcome->bodyNodes.size(); ++nodeIndex) {
         const auto &node = m_outcome->bodyNodes[nodeIndex];
         if (!BoneMarkIsBranchNode(node.boneMark))
             continue;
+        if (BoneMark::Neck == node.boneMark) {
+            if (middleStartNodeIndex == m_outcome->bodyNodes.size())
+                middleStartNodeIndex = nodeIndex;
+        } else if (BoneMark::Tail == node.boneMark) {
+            middleStartNodeIndex = nodeIndex;
+        }
         std::unordered_set<size_t> left;
         std::unordered_set<size_t> right;
         splitByNodeIndex(nodeIndex, &left, &right);
+        if (left.size() > right.size())
+            std::swap(left, right);
+        for (const auto &it: right)
+            middle.insert(it);
+        segments.push_back({nodeIndex, left});
+    }
+    for (const auto &it: segments) {
+        const auto &nodeIndex = it.first;
+        const auto &left = it.second;
+        for (const auto &it: left)
+            middle.erase(it);
+        middle.erase(nodeIndex);
+    }
+    middle.erase(middleStartNodeIndex);
+    if (middleStartNodeIndex != m_outcome->bodyNodes.size())
+        segments.push_back({middleStartNodeIndex, middle});
+    for (const auto &it: segments) {
+        const auto &left = it.second;
+        const auto &fromNodeIndex = it.first;
+        std::vector<std::vector<size_t>> boneNodeIndices;
+        std::unordered_set<size_t> visited;
+        collectNodesForBoneRecursively(fromNodeIndex,
+            &left,
+            &boneNodeIndices,
+            0,
+            &visited);
+        printf("from:%lu(%s)\r\n",
+            fromNodeIndex,
+            BoneMarkToString(m_outcome->bodyNodes[fromNodeIndex].boneMark));
+        for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
+            printf("[%lu]", i);
+            for (const auto &index: boneNodeIndices[i]) {
+                printf("%lu", index);
+                const auto &node = m_outcome->bodyNodes[index];
+                if (BoneMark::None != node.boneMark)
+                    printf("(%s)", BoneMarkToString(node.boneMark));
+                printf(" ");
+            }
+            printf("\r\n");
+        }
+        printf("\r\n");
+    }
+    
+    
+    /*
+    for (const auto &it: segments) {
+        const auto &left = std::get<0>(it);
+        const auto &right = std::get<1>(it);
+        const auto &node = m_outcome->bodyNodes[std::get<2>(it)];
         printf("[%s] nodeId:%s\r\n", BoneMarkToString(node.boneMark), node.nodeId.toString().toUtf8().constData());
         printf("left: ");
         for (const auto &it: left)
@@ -173,6 +231,11 @@ void RigGenerator::segment()
             printf("%lu ", it);
         printf("\r\n");
     }
+    printf("middle: ");
+    for (const auto &it: middle)
+        printf("%lu ", it);
+    printf("\r\n");
+    */
 }
 
 void RigGenerator::splitByNodeIndex(size_t nodeIndex,
@@ -180,7 +243,6 @@ void RigGenerator::splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *right)
 {
     const auto &neighbors = m_neighborMap[nodeIndex];
-    printf("neighbors.size:%lu\r\n", neighbors.size());
     if (2 != neighbors.size()) {
         return;
     }
@@ -216,6 +278,34 @@ void RigGenerator::collectNodes(size_t fromNodeIndex,
                 continue;
             waitQueue.push(neighborNodeIndex);
         }
+    }
+}
+
+void RigGenerator::collectNodesForBoneRecursively(size_t fromNodeIndex,
+        const std::unordered_set<size_t> *limitedNodeIndices,
+        std::vector<std::vector<size_t>> *boneNodeIndices,
+        size_t depth,
+        std::unordered_set<size_t> *visited)
+{
+    std::vector<size_t> nodeIndices;
+    for (const auto &nodeIndex: m_neighborMap[fromNodeIndex]) {
+        if (limitedNodeIndices->find(nodeIndex) == limitedNodeIndices->end())
+            continue;
+        if (visited->find(nodeIndex) != visited->end())
+            continue;
+        visited->insert(nodeIndex);
+        if (depth >= boneNodeIndices->size())
+            boneNodeIndices->resize(depth + 1);
+        (*boneNodeIndices)[depth].push_back(nodeIndex);
+        nodeIndices.push_back(nodeIndex);
+    }
+    
+    for (const auto &nodeIndex: nodeIndices) {
+        collectNodesForBoneRecursively(nodeIndex,
+            limitedNodeIndices,
+            boneNodeIndices,
+            depth + 1,
+            visited);
     }
 }
 

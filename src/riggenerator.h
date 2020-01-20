@@ -43,6 +43,11 @@ private:
     void collectNodes(size_t fromNodeIndex,
         std::unordered_set<size_t> *container,
         std::unordered_set<size_t> *visited);
+    void collectNodesForBoneRecursively(size_t fromNodeIndex,
+        const std::unordered_set<size_t> *limitedNodeIndices,
+        std::vector<std::vector<size_t>> *boneNodeIndices,
+        size_t depth,
+        std::unordered_set<size_t> *visited);
 };
 
 #endif
