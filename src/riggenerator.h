@@ -48,6 +48,8 @@ private:
         std::vector<std::vector<size_t>> *boneNodeIndices,
         size_t depth,
         std::unordered_set<size_t> *visited);
+    void removeBranchsFromNodes(const std::vector<std::vector<size_t>> *boneNodeIndices,
+        std::vector<size_t> *resultNodes);
 };
 
 #endif

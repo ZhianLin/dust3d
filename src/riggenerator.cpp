@@ -7,6 +7,7 @@
 #include <QVector2D>
 #include <queue>
 #include "riggenerator.h"
+#include "util.h"
 
 class PartEndpointsStitcher
 {
@@ -154,6 +155,53 @@ void RigGenerator::buildNeighborMap()
     }
 }
 
+void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>> *boneNodeIndices,
+        std::vector<size_t> *resultNodes)
+{
+    resultNodes->resize(boneNodeIndices->size());
+    for (size_t i = 0; i < boneNodeIndices->size(); ++i) {
+        const auto &source = (*boneNodeIndices)[i];
+        if (1 == source.size()) {
+            (*resultNodes)[i] = source[0];
+            continue;
+        }
+        if (i < 2) {
+            QVector3D sumOfPositions;
+            for (size_t j = 0; j < source.size(); ++j) {
+                sumOfPositions += m_outcome->bodyNodes[source[j]].origin;
+            }
+            auto middlePosition = sumOfPositions / source.size();
+            std::vector<std::pair<size_t, float>> distance2Array(source.size());
+            for (size_t j = 0; j < source.size(); ++j) {
+                distance2Array[j] = {
+                    source[j],
+                    (m_outcome->bodyNodes[source[j]].origin - middlePosition).lengthSquared()
+                };
+            }
+            (*resultNodes)[i] = std::min_element(distance2Array.begin(), distance2Array.end(), [](const std::pair<size_t, float> &first,
+                        const std::pair<size_t, float> &second) {
+                    return first.second < second.second;
+                })->first;
+            continue;
+        }
+        QVector3D lastDirection = (m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin -
+            m_outcome->bodyNodes[(*resultNodes)[i - 2]].origin).normalized();
+        const auto &lastPosition = m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin;
+        std::vector<std::pair<size_t, float>> anglesArray(source.size());
+        for (size_t j = 0; j < source.size(); ++j) {
+            auto direction = (m_outcome->bodyNodes[source[j]].origin - lastPosition).normalized();
+            anglesArray[j] = {
+                source[j],
+                radianBetweenVectors(lastDirection, direction)
+            };
+        }
+        (*resultNodes)[i] = std::min_element(anglesArray.begin(), anglesArray.end(), [](const std::pair<size_t, float> &first,
+                    const std::pair<size_t, float> &second) {
+                return first.second < second.second;
+            })->first;
+    }
+}
+
 void RigGenerator::segment()
 {
     std::vector<std::pair<size_t, std::unordered_set<size_t>>> segments;
@@ -193,16 +241,19 @@ void RigGenerator::segment()
         const auto &fromNodeIndex = it.first;
         std::vector<std::vector<size_t>> boneNodeIndices;
         std::unordered_set<size_t> visited;
+        std::vector<size_t> boneNodeChain;
         collectNodesForBoneRecursively(fromNodeIndex,
             &left,
             &boneNodeIndices,
             0,
             &visited);
+        removeBranchsFromNodes(&boneNodeIndices, &boneNodeChain);
+        /*
         printf("from:%lu(%s)\r\n",
             fromNodeIndex,
             BoneMarkToString(m_outcome->bodyNodes[fromNodeIndex].boneMark));
         for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
-            printf("[%lu]", i);
+            printf("[%lu]%lu|", i, boneNodeChain[i]);
             for (const auto &index: boneNodeIndices[i]) {
                 printf("%lu", index);
                 const auto &node = m_outcome->bodyNodes[index];
@@ -213,29 +264,8 @@ void RigGenerator::segment()
             printf("\r\n");
         }
         printf("\r\n");
+        */
     }
-    
-    
-    /*
-    for (const auto &it: segments) {
-        const auto &left = std::get<0>(it);
-        const auto &right = std::get<1>(it);
-        const auto &node = m_outcome->bodyNodes[std::get<2>(it)];
-        printf("[%s] nodeId:%s\r\n", BoneMarkToString(node.boneMark), node.nodeId.toString().toUtf8().constData());
-        printf("left: ");
-        for (const auto &it: left)
-            printf("%lu ", it);
-        printf("\r\n");
-        printf("right: ");
-        for (const auto &it: right)
-            printf("%lu ", it);
-        printf("\r\n");
-    }
-    printf("middle: ");
-    for (const auto &it: middle)
-        printf("%lu ", it);
-    printf("\r\n");
-    */
 }
 
 void RigGenerator::splitByNodeIndex(size_t nodeIndex,
