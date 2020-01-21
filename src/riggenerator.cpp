@@ -202,9 +202,9 @@ void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>>
     }
 }
 
-void RigGenerator::segment()
+void RigGenerator::buildBoneNodeChain()
 {
-    std::vector<std::pair<size_t, std::unordered_set<size_t>>> segments;
+    std::vector<std::tuple<size_t, std::unordered_set<size_t>, bool>> segments;
     std::unordered_set<size_t> middle;
     size_t middleStartNodeIndex = m_outcome->bodyNodes.size();
     for (size_t nodeIndex = 0; nodeIndex < m_outcome->bodyNodes.size(); ++nodeIndex) {
@@ -224,21 +224,22 @@ void RigGenerator::segment()
             std::swap(left, right);
         for (const auto &it: right)
             middle.insert(it);
-        segments.push_back({nodeIndex, left});
+        segments.push_back({nodeIndex, left, false});
     }
     for (const auto &it: segments) {
-        const auto &nodeIndex = it.first;
-        const auto &left = it.second;
+        const auto &nodeIndex = std::get<0>(it);
+        const auto &left = std::get<1>(it);
         for (const auto &it: left)
             middle.erase(it);
         middle.erase(nodeIndex);
     }
     middle.erase(middleStartNodeIndex);
     if (middleStartNodeIndex != m_outcome->bodyNodes.size())
-        segments.push_back({middleStartNodeIndex, middle});
+        segments.push_back({middleStartNodeIndex, middle, true});
     for (const auto &it: segments) {
-        const auto &left = it.second;
-        const auto &fromNodeIndex = it.first;
+        const auto &fromNodeIndex = std::get<0>(it);
+        const auto &left = std::get<1>(it);
+        const auto &isSpine = std::get<2>(it);
         std::vector<std::vector<size_t>> boneNodeIndices;
         std::unordered_set<size_t> visited;
         std::vector<size_t> boneNodeChain;
@@ -248,24 +249,70 @@ void RigGenerator::segment()
             0,
             &visited);
         removeBranchsFromNodes(&boneNodeIndices, &boneNodeChain);
-        /*
-        printf("from:%lu(%s)\r\n",
-            fromNodeIndex,
-            BoneMarkToString(m_outcome->bodyNodes[fromNodeIndex].boneMark));
-        for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
-            printf("[%lu]%lu|", i, boneNodeChain[i]);
-            for (const auto &index: boneNodeIndices[i]) {
-                printf("%lu", index);
-                const auto &node = m_outcome->bodyNodes[index];
-                if (BoneMark::None != node.boneMark)
-                    printf("(%s)", BoneMarkToString(node.boneMark));
-                printf(" ");
-            }
-            printf("\r\n");
-        }
-        printf("\r\n");
-        */
+        m_boneNodeChain.push_back({fromNodeIndex, boneNodeChain, isSpine});
     }
+    for (size_t i = 0; i < m_boneNodeChain.size(); ++i) {
+        const auto &chain = m_boneNodeChain[i];
+        const auto &node = m_outcome->bodyNodes[std::get<0>(chain)];
+        const auto &isSpine = std::get<2>(chain);
+        if (isSpine) {
+            m_spineChains.push_back(i);
+            continue;
+        }
+        if (BoneMark::Neck == node.boneMark) {
+            m_neckChains.push_back(i);
+        } else if (BoneMark::Tail == node.boneMark) {
+            m_tailChains.push_back(i);
+        } else if (BoneMark::Limb == node.boneMark) {
+            if (node.origin.x() < 0) {
+                m_leftLimbChains.push_back(i);
+            } else if (node.origin.x() > 0) {
+                m_rightLimbChains.push_back(i);
+            }
+        }
+    }
+}
+
+void RigGenerator::calculateSpineDirection(bool *isVertical)
+{
+    // TODO:
+}
+
+void RigGenerator::buildSkeleton()
+{
+    bool addMarkHelpInfo = false;
+    
+    if (m_leftLimbChains.size() != m_rightLimbChains.size()) {
+        m_messages.push_back({QtInfoMsg, tr("Imbalanced left and right limbs")});
+    } else if (m_leftLimbChains.empty()) {
+        m_messages.push_back({QtInfoMsg, tr("No limbs found")});
+        addMarkHelpInfo = true;
+    }
+    
+    if (addMarkHelpInfo) {
+        m_messages.push_back({QtInfoMsg, tr("Please mark the neck, limbs and joints from the context menu")});
+    }
+    
+    if (!m_messages.empty())
+        return;
+    
+    calculateSpineDirection(&m_isSpineVertical);
+    
+    auto sortLimbChains = [&](std::vector<size_t> &chains) {
+        std::sort(chains.begin(), chains.end(), [&](const size_t &first,
+                const size_t &second) {
+            if (m_isSpineVertical) {
+                return m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[first])].origin.y() <
+                    m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[second])].origin.y();
+            }
+            return m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[first])].origin.z() <
+                m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[second])].origin.z();
+        });
+    };
+    sortLimbChains(m_leftLimbChains);
+    sortLimbChains(m_rightLimbChains);
+    
+    // TODO:
 }
 
 void RigGenerator::splitByNodeIndex(size_t nodeIndex,
@@ -342,7 +389,8 @@ void RigGenerator::collectNodesForBoneRecursively(size_t fromNodeIndex,
 void RigGenerator::generate()
 {
     buildNeighborMap();
-    segment();
+    buildBoneNodeChain();
+    buildSkeleton();
 }
 
 void RigGenerator::process()

@@ -34,9 +34,18 @@ private:
     std::map<int, RiggerVertexWeights> *m_resultWeights = nullptr;
     std::vector<std::pair<QtMsgType, QString>> m_messages;
     std::map<size_t, std::unordered_set<size_t>> m_neighborMap;
+    std::vector<std::tuple<size_t, std::vector<size_t>, bool>> m_boneNodeChain;
+    std::vector<size_t> m_neckChains;
+    std::vector<size_t> m_leftLimbChains;
+    std::vector<size_t> m_rightLimbChains;
+    std::vector<size_t> m_tailChains;
+    std::vector<size_t> m_spineChains;
+    bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();
-    void segment();
+    void buildBoneNodeChain();
+    void buildSkeleton();
+    void calculateSpineDirection(bool *isVertical);
     void splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *left,
         std::unordered_set<size_t> *right);
