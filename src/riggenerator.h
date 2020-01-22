@@ -27,6 +27,15 @@ signals:
 public slots:
     void process();
 private:
+    struct BoneNoeChain
+    {
+        size_t fromNodeIndex;
+        std::vector<size_t> nodeIndices;
+        bool isSpine;
+        std::vector<bool> nodeIsJointFlags;
+        size_t attachNodeIndex;
+    };
+    
     RigType m_rigType = RigType::None;
     Outcome *m_outcome = nullptr;
     MeshLoader *m_resultMesh = nullptr;
@@ -34,13 +43,14 @@ private:
     std::map<int, RiggerVertexWeights> *m_resultWeights = nullptr;
     std::vector<std::pair<QtMsgType, QString>> m_messages;
     std::map<size_t, std::unordered_set<size_t>> m_neighborMap;
-    std::vector<std::tuple<size_t, std::vector<size_t>, bool>> m_boneNodeChain;
+    std::vector<BoneNoeChain> m_boneNodeChain;
     std::vector<size_t> m_neckChains;
     std::vector<size_t> m_leftLimbChains;
     std::vector<size_t> m_rightLimbChains;
     std::vector<size_t> m_tailChains;
     std::vector<size_t> m_spineChains;
     std::vector<size_t> m_attachLimbsToSpineChainPositions;
+    std::map<int, std::vector<size_t>> m_branchNodesMapByMark;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();

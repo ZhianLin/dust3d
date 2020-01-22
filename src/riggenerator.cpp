@@ -211,6 +211,7 @@ void RigGenerator::buildBoneNodeChain()
         const auto &node = m_outcome->bodyNodes[nodeIndex];
         if (!BoneMarkIsBranchNode(node.boneMark))
             continue;
+        m_branchNodesMapByMark[(int)node.boneMark].push_back(nodeIndex);
         if (BoneMark::Neck == node.boneMark) {
             if (middleStartNodeIndex == m_outcome->bodyNodes.size())
                 middleStartNodeIndex = nodeIndex;
@@ -240,21 +241,47 @@ void RigGenerator::buildBoneNodeChain()
         const auto &fromNodeIndex = std::get<0>(it);
         const auto &left = std::get<1>(it);
         const auto &isSpine = std::get<2>(it);
+        const auto &fromNode = m_outcome->bodyNodes[fromNodeIndex];
         std::vector<std::vector<size_t>> boneNodeIndices;
         std::unordered_set<size_t> visited;
         std::vector<size_t> boneNodeChain;
+        std::vector<bool> isJointFlags;
+        size_t attachNodeIndex = fromNodeIndex;
         collectNodesForBoneRecursively(fromNodeIndex,
             &left,
             &boneNodeIndices,
             0,
             &visited);
+        if (BoneMark::Limb == fromNode.boneMark) {
+            for (const auto &neighbor: m_neighborMap[fromNodeIndex]) {
+                if (left.find(neighbor) == left.end()) {
+                    attachNodeIndex = neighbor;
+                    break;
+                }
+            }
+        }
         removeBranchsFromNodes(&boneNodeIndices, &boneNodeChain);
-        m_boneNodeChain.push_back({fromNodeIndex, boneNodeChain, isSpine});
+        isJointFlags.resize(boneNodeChain.size(), false);
+        for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
+            for (const auto &nodeIndex: boneNodeIndices[i]) {
+                if (BoneMark::None == m_outcome->bodyNodes[nodeIndex].boneMark)
+                    continue;
+                isJointFlags[i] = true;
+                break;
+            }
+        }
+        m_boneNodeChain.push_back({fromNodeIndex, boneNodeChain, isSpine, isJointFlags, attachNodeIndex});
     }
     for (size_t i = 0; i < m_boneNodeChain.size(); ++i) {
         const auto &chain = m_boneNodeChain[i];
-        const auto &node = m_outcome->bodyNodes[std::get<0>(chain)];
-        const auto &isSpine = std::get<2>(chain);
+        const auto &node = m_outcome->bodyNodes[chain.fromNodeIndex];
+        const auto &isSpine = chain.isSpine;
+        //printf("Chain[%lu] %s %s", i, BoneMarkToString(node.boneMark), isSpine ? "SPINE " : "");
+        //printf("|");
+        //for (size_t j = 0; j < chain.nodeIndices.size(); ++j) {
+        //    printf("%lu%s ", chain.nodeIndices[j], chain.nodeIsJointFlags[j] ? "(JOINT)" : "");
+        //}
+        //printf("\r\n");
         if (isSpine) {
             m_spineChains.push_back(i);
             continue;
@@ -281,7 +308,7 @@ void RigGenerator::calculateSpineDirection(bool *isVertical)
     float bottom = std::numeric_limits<float>::max();
     auto updateBoundingBox = [&](const std::vector<size_t> &chains) {
         for (const auto &it: chains) {
-            const auto &node = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[it])];
+            const auto &node = m_outcome->bodyNodes[m_boneNodeChain[it].fromNodeIndex];
             if (node.origin.y() > top)
                 top = node.origin.y();
             if (node.origin.y() < bottom)
@@ -306,12 +333,12 @@ void RigGenerator::attachLimbsToSpine()
     
     m_attachLimbsToSpineChainPositions.resize(m_leftLimbChains.size());
     for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
-        const auto &leftNode = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[m_leftLimbChains[i]])];
-        const auto &rightNode = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[m_rightLimbChains[i]])];
+        const auto &leftNode = m_outcome->bodyNodes[m_boneNodeChain[m_leftLimbChains[i]].attachNodeIndex];
+        const auto &rightNode = m_outcome->bodyNodes[m_boneNodeChain[m_rightLimbChains[i]].attachNodeIndex];
         auto limbMiddle = (leftNode.origin + rightNode.origin) * 0.5;
         std::vector<std::pair<size_t, float>> distance2WithSpine;
         auto boneNodeChainIndex = m_spineChains[0];
-        const auto &nodeIndices = std::get<1>(m_boneNodeChain[boneNodeChainIndex]);
+        const auto &nodeIndices = m_boneNodeChain[boneNodeChainIndex].nodeIndices;
         distance2WithSpine.reserve(nodeIndices.size());
         for (size_t j = 0; j < nodeIndices.size(); ++j) {
             const auto &nodeIndex = nodeIndices[j];
@@ -357,11 +384,11 @@ void RigGenerator::buildSkeleton()
         std::sort(chains.begin(), chains.end(), [&](const size_t &first,
                 const size_t &second) {
             if (m_isSpineVertical) {
-                return m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[first])].origin.y() <
-                    m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[second])].origin.y();
+                return m_outcome->bodyNodes[m_boneNodeChain[first].fromNodeIndex].origin.y() <
+                    m_outcome->bodyNodes[m_boneNodeChain[second].fromNodeIndex].origin.y();
             }
-            return m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[first])].origin.z() <
-                m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[second])].origin.z();
+            return m_outcome->bodyNodes[m_boneNodeChain[first].fromNodeIndex].origin.z() <
+                m_outcome->bodyNodes[m_boneNodeChain[second].fromNodeIndex].origin.z();
         });
     };
     sortLimbChains(m_leftLimbChains);
@@ -369,7 +396,8 @@ void RigGenerator::buildSkeleton()
     
     attachLimbsToSpine();
     
-    // TODO:
+    //m_boneNodeChain[m_spineChains[m_attachLimbsToSpineChainPositions[0]]];
+    // TODO: Root, Hip, Leg, Arm, Head, Tail
 }
 
 void RigGenerator::splitByNodeIndex(size_t nodeIndex,
