@@ -40,12 +40,14 @@ private:
     std::vector<size_t> m_rightLimbChains;
     std::vector<size_t> m_tailChains;
     std::vector<size_t> m_spineChains;
+    std::vector<size_t> m_attachLimbsToSpineChainPositions;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();
     void buildBoneNodeChain();
     void buildSkeleton();
     void calculateSpineDirection(bool *isVertical);
+    void attachLimbsToSpine();
     void splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *left,
         std::unordered_set<size_t> *right);

@@ -275,7 +275,57 @@ void RigGenerator::buildBoneNodeChain()
 
 void RigGenerator::calculateSpineDirection(bool *isVertical)
 {
-    // TODO:
+    float left = std::numeric_limits<float>::lowest();
+    float right = std::numeric_limits<float>::max();
+    float top = std::numeric_limits<float>::lowest();
+    float bottom = std::numeric_limits<float>::max();
+    auto updateBoundingBox = [&](const std::vector<size_t> &chains) {
+        for (const auto &it: chains) {
+            const auto &node = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[it])];
+            if (node.origin.y() > top)
+                top = node.origin.y();
+            if (node.origin.y() < bottom)
+                bottom = node.origin.y();
+            if (node.origin.z() > left)
+                left = node.origin.z();
+            if (node.origin.z() < right)
+                right = node.origin.z();
+        }
+    };
+    updateBoundingBox(m_leftLimbChains);
+    updateBoundingBox(m_rightLimbChains);
+    auto zLength = left - right;
+    auto yLength = top - bottom;
+    *isVertical = yLength >= zLength;
+}
+
+void RigGenerator::attachLimbsToSpine()
+{
+    Q_ASSERT(m_leftLimbChains.size() == m_rightLimbChains.size());
+    Q_ASSERT(m_spineChains.size() == 1);
+    
+    m_attachLimbsToSpineChainPositions.resize(m_leftLimbChains.size());
+    for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
+        const auto &leftNode = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[m_leftLimbChains[i]])];
+        const auto &rightNode = m_outcome->bodyNodes[std::get<0>(m_boneNodeChain[m_rightLimbChains[i]])];
+        auto limbMiddle = (leftNode.origin + rightNode.origin) * 0.5;
+        std::vector<std::pair<size_t, float>> distance2WithSpine;
+        auto boneNodeChainIndex = m_spineChains[0];
+        const auto &nodeIndices = std::get<1>(m_boneNodeChain[boneNodeChainIndex]);
+        distance2WithSpine.reserve(nodeIndices.size());
+        for (size_t j = 0; j < nodeIndices.size(); ++j) {
+            const auto &nodeIndex = nodeIndices[j];
+            distance2WithSpine.push_back({
+                j,
+                (m_outcome->bodyNodes[nodeIndex].origin - limbMiddle).lengthSquared()
+            });
+        }
+        auto chainPos = std::min_element(distance2WithSpine.begin(), distance2WithSpine.end(), [](
+                const std::pair<size_t, float> &first, const std::pair<size_t, float> &second) {
+            return first.second < second.second;
+        })->first;
+        m_attachLimbsToSpineChainPositions[i] = chainPos;
+    }
 }
 
 void RigGenerator::buildSkeleton()
@@ -286,6 +336,11 @@ void RigGenerator::buildSkeleton()
         m_messages.push_back({QtInfoMsg, tr("Imbalanced left and right limbs")});
     } else if (m_leftLimbChains.empty()) {
         m_messages.push_back({QtInfoMsg, tr("No limbs found")});
+        addMarkHelpInfo = true;
+    }
+    
+    if (m_spineChains.empty()) {
+        m_messages.push_back({QtInfoMsg, tr("No body found")});
         addMarkHelpInfo = true;
     }
     
@@ -311,6 +366,8 @@ void RigGenerator::buildSkeleton()
     };
     sortLimbChains(m_leftLimbChains);
     sortLimbChains(m_rightLimbChains);
+    
+    attachLimbsToSpine();
     
     // TODO:
 }
