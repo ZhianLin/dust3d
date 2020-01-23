@@ -50,7 +50,14 @@ private:
     std::vector<size_t> m_tailChains;
     std::vector<size_t> m_spineChains;
     std::vector<size_t> m_attachLimbsToSpineChainPositions;
+    std::vector<size_t> m_attachLimbsToSpineJointIndices;
     std::map<int, std::vector<size_t>> m_branchNodesMapByMark;
+    std::vector<size_t> m_neckJoints;
+    std::vector<std::vector<size_t>> m_leftLimbJoints;
+    std::vector<std::vector<size_t>> m_rightLimbJoints;
+    std::vector<size_t> m_tailJoints;
+    std::vector<size_t> m_spineJoints;
+    std::vector<RiggerBone> m_bones;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();
@@ -58,6 +65,8 @@ private:
     void buildSkeleton();
     void calculateSpineDirection(bool *isVertical);
     void attachLimbsToSpine();
+    void extractSpineJoints();
+    void extractBranchJoints();
     void splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *left,
         std::unordered_set<size_t> *right);

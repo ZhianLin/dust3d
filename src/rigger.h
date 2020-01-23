@@ -26,7 +26,6 @@ public:
     float headRadius = 0.0;
     float tailRadius = 0.0;
     QColor color;
-    QVector3D baseNormal;
     std::vector<int> children;
 };
 
