@@ -401,15 +401,18 @@ void RigGenerator::buildSkeleton()
     std::map<QString, int> boneNameToIndexMap;
     size_t rootJointIndex = m_attachLimbsToSpineJointIndices[0];
     
+    m_resultBones = new std::vector<RiggerBone>;
+    m_resultWeights = new std::map<int, RiggerVertexWeights>;
+    
     {
         const auto &firstSpineNode = m_outcome->bodyNodes[m_spineJoints[rootJointIndex]];
         RiggerBone bone;
         bone.headPosition = QVector3D(0.0, 0.0, 0.0);
         bone.tailPosition = firstSpineNode.origin;
         bone.name = QString("Body");
-        bone.index = m_bones.size();
+        bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
-        m_bones.push_back(bone);
+        m_resultBones->push_back(bone);
     }
     
     auto attachedBoneIndex = [&](size_t spineJointIndex) {
@@ -428,10 +431,10 @@ void RigGenerator::buildSkeleton()
         bone.headPosition = currentNode.origin;
         bone.tailPosition = nextNode.origin;
         bone.name = QString("Spine") + QString::number(spineJointIndex + 1 - rootJointIndex);
-        bone.index = m_bones.size();
+        bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
-        m_bones.push_back(bone);
-        m_bones[attachedBoneIndex(spineJointIndex)].children.push_back(bone.index);
+        m_resultBones->push_back(bone);
+        (*m_resultBones)[attachedBoneIndex(spineJointIndex)].children.push_back(bone.index);
     }
     
     auto addSpineLinkBone = [&](size_t limbIndex,
@@ -441,15 +444,15 @@ void RigGenerator::buildSkeleton()
         const auto &spineJointIndex = m_attachLimbsToSpineJointIndices[limbIndex];
         const auto &spineNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
         const auto &limbFirstNode = m_outcome->bodyNodes[limbJoints[limbIndex][0]];
-        const auto &parent = m_bones[attachedBoneIndex(spineJointIndex)];
+        const auto &parentIndex = attachedBoneIndex(spineJointIndex);;
         RiggerBone bone;
         bone.headPosition = spineNode.origin;
         bone.tailPosition = limbFirstNode.origin;
-        bone.name = QString("Virtual_") + parent.name + QString("_") + chainName;
-        bone.index = m_bones.size();
+        bone.name = QString("Virtual_") + (*m_resultBones)[parentIndex].name + QString("_") + chainName;
+        bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
-        m_bones.push_back(bone);
-        m_bones[parent.index].children.push_back(bone.index);
+        m_resultBones->push_back(bone);
+        (*m_resultBones)[parentIndex].children.push_back(bone.index);
     };
     
     auto addLimbBone = [&](size_t limbIndex,
@@ -458,7 +461,7 @@ void RigGenerator::buildSkeleton()
         const auto &joints = limbJoints[limbIndex];
         QString chainName = chainPrefix + QString::number(limbIndex + 1);
         for (size_t limbJointIndex = 0;
-                limbJointIndex + 1 < limbJoints.size();
+                limbJointIndex + 1 < joints.size();
                 ++limbJointIndex) {
             const auto &currentNode = m_outcome->bodyNodes[joints[limbJointIndex]];
             const auto &nextNode = m_outcome->bodyNodes[joints[limbJointIndex + 1]];
@@ -466,9 +469,13 @@ void RigGenerator::buildSkeleton()
             bone.headPosition = currentNode.origin;
             bone.tailPosition = nextNode.origin;
             bone.name = chainName + QString("_Joint") + QString::number(limbJointIndex + 1);
-            bone.index = m_bones.size();
+            bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
-            m_bones.push_back(bone);
+            m_resultBones->push_back(bone);
+            if (limbJointIndex > 0) {
+                auto parentName = chainName + QString("_Joint") + QString::number(limbJointIndex);
+                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            }
         }
     };
     
@@ -491,9 +498,13 @@ void RigGenerator::buildSkeleton()
             bone.headPosition = currentNode.origin;
             bone.tailPosition = nextNode.origin;
             bone.name = QString("Neck_Joint") + QString::number(neckJointIndex + 1);
-            bone.index = m_bones.size();
+            bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
-            m_bones.push_back(bone);
+            m_resultBones->push_back(bone);
+            if (neckJointIndex > 0) {
+                auto parentName = QString("Neck_Joint") + QString::number(neckJointIndex);
+                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            }
         }
     }
     
@@ -506,9 +517,9 @@ void RigGenerator::buildSkeleton()
             bone.headPosition = spineNode.origin;
             bone.tailPosition = tailFirstNode.origin;
             bone.name = QString("Virtual_Body_Tail");
-            bone.index = m_bones.size();
+            bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
-            m_bones.push_back(bone);
+            m_resultBones->push_back(bone);
         }
     
         for (size_t tailJointIndex = 0;
@@ -520,25 +531,31 @@ void RigGenerator::buildSkeleton()
             bone.headPosition = currentNode.origin;
             bone.tailPosition = nextNode.origin;
             bone.name = QString("Tail_Joint") + QString::number(tailJointIndex + 1);
-            bone.index = m_bones.size();
+            bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
-            m_bones.push_back(bone);
+            m_resultBones->push_back(bone);
+            if (tailJointIndex > 0) {
+                auto parentName = QString("Tail_Joint") + QString::number(tailJointIndex);
+                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            }
         }
     }
     
-    for (size_t i = 0; i < m_bones.size(); ++i) {
-        const auto &bone = m_bones[i];
+    for (size_t i = 0; i < m_resultBones->size(); ++i) {
+        const auto &bone = (*m_resultBones)[i];
         printf("bone[%lu] %s\r\n", i, bone.name.toUtf8().constData());
         if (!bone.children.empty()) {
             printf("    ");
             for (const auto &it: bone.children) {
-                printf("%s ", m_bones[it].name.toUtf8().constData());
+                printf("%s ", (*m_resultBones)[it].name.toUtf8().constData());
             }
             printf("\r\n");
         }
     }
     
     // TODO:
+    
+    m_isSucceed = true;
 }
 
 void RigGenerator::extractBranchJoints()

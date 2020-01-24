@@ -367,7 +367,7 @@ void PoseDocument::parametersToNodes(const std::vector<RiggerBone> *rigBones,
                 node.setY(fromOutcomeY(bone.headPosition.y()));
                 node.setZ(fromOutcomeZ(bone.headPosition.z()));
                 nodeMap[node.id] = node;
-                qDebug() << "Add first node:" << (*rigBones)[edgePair.first].name;
+                //qDebug() << "Add first node:" << (*rigBones)[edgePair.first].name;
                 newAddedNodeIds.insert(node.id);
                 boneIndexToHeadNodeIdMap[edgePair.first] = node.id;
                 firstNodeId = node.id;
@@ -389,7 +389,7 @@ void PoseDocument::parametersToNodes(const std::vector<RiggerBone> *rigBones,
                 node.setY(fromOutcomeY(firstBone.tailPosition.y()));
                 node.setZ(fromOutcomeZ(firstBone.tailPosition.z()));
                 nodeMap[node.id] = node;
-                qDebug() << "Add second node:" << (*rigBones)[edgePair.second].name;
+                //qDebug() << "Add second node:" << (*rigBones)[edgePair.second].name;
                 newAddedNodeIds.insert(node.id);
                 boneIndexToHeadNodeIdMap[edgePair.second] = node.id;
                 secondNodeId = node.id;
@@ -416,6 +416,29 @@ void PoseDocument::parametersToNodes(const std::vector<RiggerBone> *rigBones,
         newAddedEdgeIds.insert(edge.id);
         nodeMap[firstNodeId].edgeIds.push_back(edge.id);
         nodeMap[secondNodeId].edgeIds.push_back(edge.id);
+    }
+    
+    for (size_t i = m_hideRootAndVirtual ? 1 : 0; i < rigBones->size(); ++i) {
+        if (boneIndexToHeadNodeIdMap.find(i) != boneIndexToHeadNodeIdMap.end())
+            continue;
+        const auto &bone = (*rigBones)[i];
+        if (!bone.children.empty())
+            continue;
+        if (!bone.name.startsWith("Virtual_") || !m_hideRootAndVirtual) {
+            SkeletonSide side = SkeletonSideFromBoneName(bone.name);
+            
+            SkeletonNode node;
+            node.partId = (*m_partIdMap)[side];
+            node.id = QUuid::createUuid();
+            partMap[node.partId].nodeIds.push_back(node.id);
+            node.setRadius(m_nodeRadius);
+            node.setX(fromOutcomeX(bone.headPosition.x()));
+            node.setY(fromOutcomeY(bone.headPosition.y()));
+            node.setZ(fromOutcomeZ(bone.headPosition.z()));
+            nodeMap[node.id] = node;
+            newAddedNodeIds.insert(node.id);
+            boneIndexToHeadNodeIdMap[i] = node.id;
+        }
     }
     
     for (size_t i = m_hideRootAndVirtual ? 1 : 0; i < rigBones->size(); ++i) {

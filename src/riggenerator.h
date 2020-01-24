@@ -57,7 +57,6 @@ private:
     std::vector<std::vector<size_t>> m_rightLimbJoints;
     std::vector<size_t> m_tailJoints;
     std::vector<size_t> m_spineJoints;
-    std::vector<RiggerBone> m_bones;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();
