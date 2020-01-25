@@ -1113,6 +1113,25 @@ Tips:
     </message>
 </context>
 <context>
+    <name>RigGenerator</name>
+    <message>
+        <source>Imbalanced left and right limbs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No limbs found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No body found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Please mark the neck, limbs and joints from the context menu</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RigWidget</name>
     <message>
         <source>Type</source>
