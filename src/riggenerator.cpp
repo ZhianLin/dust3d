@@ -166,19 +166,14 @@ void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>>
             continue;
         }
         if (i < 2) {
-            QVector3D sumOfPositions;
+            std::vector<std::pair<size_t, float>> radisArray(source.size());
             for (size_t j = 0; j < source.size(); ++j) {
-                sumOfPositions += m_outcome->bodyNodes[source[j]].origin;
-            }
-            auto middlePosition = sumOfPositions / source.size();
-            std::vector<std::pair<size_t, float>> distance2Array(source.size());
-            for (size_t j = 0; j < source.size(); ++j) {
-                distance2Array[j] = {
+                radisArray[j] = {
                     source[j],
-                    (m_outcome->bodyNodes[source[j]].origin - middlePosition).lengthSquared()
+                    m_outcome->bodyNodes[source[j]].radius
                 };
             }
-            (*resultNodes)[i] = std::min_element(distance2Array.begin(), distance2Array.end(), [](const std::pair<size_t, float> &first,
+            (*resultNodes)[i] = std::max_element(radisArray.begin(), radisArray.end(), [](const std::pair<size_t, float> &first,
                         const std::pair<size_t, float> &second) {
                     return first.second < second.second;
                 })->first;
@@ -541,17 +536,17 @@ void RigGenerator::buildSkeleton()
         }
     }
     
-    for (size_t i = 0; i < m_resultBones->size(); ++i) {
-        const auto &bone = (*m_resultBones)[i];
-        printf("bone[%lu] %s\r\n", i, bone.name.toUtf8().constData());
-        if (!bone.children.empty()) {
-            printf("    ");
-            for (const auto &it: bone.children) {
-                printf("%s ", (*m_resultBones)[it].name.toUtf8().constData());
-            }
-            printf("\r\n");
-        }
-    }
+    //for (size_t i = 0; i < m_resultBones->size(); ++i) {
+    //    const auto &bone = (*m_resultBones)[i];
+    //    printf("bone[%lu] %s\r\n", i, bone.name.toUtf8().constData());
+    //    if (!bone.children.empty()) {
+    //        printf("    ");
+    //        for (const auto &it: bone.children) {
+    //            printf("%s ", (*m_resultBones)[it].name.toUtf8().constData());
+    //        }
+    //        printf("\r\n");
+    //    }
+    //}
     
     // TODO:
     
