@@ -1111,6 +1111,14 @@ Tips:
         <source>Tremendously High Poly</source>
         <translation>巨多面数</translation>
     </message>
+    <message>
+        <source>Medium Poly</source>
+        <translation>中面数</translation>
+    </message>
+    <message>
+        <source>Very High Poly</source>
+        <translation>很高面数</translation>
+    </message>
 </context>
 <context>
     <name>RigGenerator</name>

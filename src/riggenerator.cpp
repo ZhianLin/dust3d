@@ -8,6 +8,7 @@
 #include <queue>
 #include "riggenerator.h"
 #include "util.h"
+#include "computeskinweights.h"
 
 class PartEndpointsStitcher
 {
@@ -536,19 +537,46 @@ void RigGenerator::buildSkeleton()
         }
     }
     
-    //for (size_t i = 0; i < m_resultBones->size(); ++i) {
-    //    const auto &bone = (*m_resultBones)[i];
-    //    printf("bone[%lu] %s\r\n", i, bone.name.toUtf8().constData());
-    //    if (!bone.children.empty()) {
-    //        printf("    ");
-    //        for (const auto &it: bone.children) {
-    //            printf("%s ", (*m_resultBones)[it].name.toUtf8().constData());
-    //        }
-    //        printf("\r\n");
-    //    }
-    //}
-    
-    // TODO:
+    if (!m_resultBones->empty()) {
+        std::vector<QVector3D> boneNodes;
+        std::vector<std::pair<size_t, size_t>> boneEdges;
+        std::map<size_t, size_t> oldToNewMap;
+        auto addNode = [&](size_t boneIndex) {
+            auto findNew = oldToNewMap.find(boneIndex);
+            if (findNew != oldToNewMap.end())
+                return findNew->second;
+            auto newIndex = boneNodes.size();
+            boneNodes.push_back((*m_resultBones)[boneIndex].headPosition);
+            oldToNewMap.insert({boneIndex, newIndex});
+            return newIndex;
+        };
+        auto addEdge = [&](size_t fromBoneIndex, size_t toBoneIndex) {
+            auto fromNewIndex = addNode(fromBoneIndex);
+            auto toNewIndex = addNode(toBoneIndex);
+            boneEdges.push_back({fromNewIndex, toNewIndex});
+        };
+
+        std::queue<int> waitQueue;
+        waitQueue.push(0);
+        while (!waitQueue.empty()) {
+            auto boneIndex = (int)waitQueue.front();
+            waitQueue.pop();
+            const auto &bone = (*m_resultBones)[boneIndex];
+            for (const auto &childIndex: bone.children) {
+                addEdge(boneIndex, childIndex);
+                waitQueue.push(childIndex);
+            }
+        }
+        
+        for (size_t i = 0; i < boneNodes.size(); ++i) {
+            printf("node[%lu]\r\n", i);
+        }
+        for (size_t i = 0; i < boneEdges.size(); ++i) {
+            printf("edge[%lu]: %lu %lu\r\n", i, boneEdges[i].first, boneEdges[i].second);
+        }
+        
+        computeSkinWeights(m_outcome->vertices, m_outcome->triangles, boneNodes, boneEdges);
+    }
     
     m_isSucceed = true;
 }
