@@ -166,7 +166,7 @@ void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>>
             (*resultNodes)[i] = source[0];
             continue;
         }
-        if (i < 2) {
+        //if (i < 2) {
             std::vector<std::pair<size_t, float>> radisArray(source.size());
             for (size_t j = 0; j < source.size(); ++j) {
                 radisArray[j] = {
@@ -178,23 +178,23 @@ void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>>
                         const std::pair<size_t, float> &second) {
                     return first.second < second.second;
                 })->first;
-            continue;
-        }
-        QVector3D lastDirection = (m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin -
-            m_outcome->bodyNodes[(*resultNodes)[i - 2]].origin).normalized();
-        const auto &lastPosition = m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin;
-        std::vector<std::pair<size_t, float>> anglesArray(source.size());
-        for (size_t j = 0; j < source.size(); ++j) {
-            auto direction = (m_outcome->bodyNodes[source[j]].origin - lastPosition).normalized();
-            anglesArray[j] = {
-                source[j],
-                radianBetweenVectors(lastDirection, direction)
-            };
-        }
-        (*resultNodes)[i] = std::min_element(anglesArray.begin(), anglesArray.end(), [](const std::pair<size_t, float> &first,
-                    const std::pair<size_t, float> &second) {
-                return first.second < second.second;
-            })->first;
+        //    continue;
+        //}
+        //QVector3D lastDirection = (m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin -
+        //    m_outcome->bodyNodes[(*resultNodes)[i - 2]].origin).normalized();
+        //const auto &lastPosition = m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin;
+        //std::vector<std::pair<size_t, float>> anglesArray(source.size());
+        //for (size_t j = 0; j < source.size(); ++j) {
+        //    auto direction = (m_outcome->bodyNodes[source[j]].origin - lastPosition).normalized();
+        //    anglesArray[j] = {
+        //        source[j],
+        //        radianBetweenVectors(lastDirection, direction)
+        //    };
+        //}
+        //(*resultNodes)[i] = std::min_element(anglesArray.begin(), anglesArray.end(), [](const std::pair<size_t, float> &first,
+        //            const std::pair<size_t, float> &second) {
+        //        return first.second < second.second;
+        //    })->first;
     }
 }
 
@@ -566,13 +566,6 @@ void RigGenerator::buildSkeleton()
                 addEdge(boneIndex, childIndex);
                 waitQueue.push(childIndex);
             }
-        }
-        
-        for (size_t i = 0; i < boneNodes.size(); ++i) {
-            printf("node[%lu]\r\n", i);
-        }
-        for (size_t i = 0; i < boneEdges.size(); ++i) {
-            printf("edge[%lu]: %lu %lu\r\n", i, boneEdges[i].first, boneEdges[i].second);
         }
         
         computeSkinWeights(m_outcome->vertices, m_outcome->triangles, boneNodes, boneEdges);

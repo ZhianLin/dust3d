@@ -1,6 +1,7 @@
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 #include <cmath>
+#include <iostream>
 #include "projectfacestonodes.h"
 #include "util.h"
 
@@ -66,12 +67,78 @@ private:
     std::vector<size_t> *m_faceSources = nullptr;
 };
 
+class SphereParentFinder
+{
+public:
+    SphereParentFinder(const std::vector<std::tuple<QVector3D, float, size_t>> *sourceNodesOrderedByRadius,
+            std::vector<size_t> *parents) :
+        m_sourceNodesOrderedByRadius(sourceNodesOrderedByRadius),
+        m_parents(parents)
+    {
+    }
+    void operator()(const tbb::blocked_range<size_t> &range) const
+    {
+        for (size_t i = range.begin(); i != range.end(); ++i) {
+            const auto &my = (*m_sourceNodesOrderedByRadius)[i];
+            (*m_parents)[i] = i;
+            for (int j = m_sourceNodesOrderedByRadius->size() - 1; j >= 0; --j) {
+                const auto &potentialParent = (*m_sourceNodesOrderedByRadius)[j];
+                const auto &potentialParentRadius = std::get<1>(potentialParent);
+                const auto &myRadius = std::get<1>(my);
+                if (myRadius <= potentialParentRadius) {
+                    auto distance = (std::get<0>(my) - std::get<0>(potentialParent)).length();
+                    if (distance <= myRadius + potentialParentRadius) {
+                        if (potentialParentRadius - distance >= myRadius) {
+                            (*m_parents)[i] = j;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+public:
+    const std::vector<std::tuple<QVector3D, float, size_t>> *m_sourceNodesOrderedByRadius = nullptr;
+    std::vector<size_t> *m_parents = nullptr;
+};
+
 void projectFacesToNodes(const std::vector<QVector3D> &vertices,
     const std::vector<std::vector<size_t>> &faces,
     const std::vector<std::pair<QVector3D, float>> &sourceNodes,
     std::vector<size_t> *faceSources)
 {
+    // Calculate the spheres which contained in bigger sphere,
+    // these shperes will be replaced with the bigger shpere instead from the the source nodes
+    std::vector<std::tuple<QVector3D, float, size_t>> sourceNodesOrderedByRadius;
+    sourceNodesOrderedByRadius.reserve(sourceNodes.size());
+    for (size_t i = 0; i < sourceNodes.size(); ++i) {
+        const auto &source = sourceNodes[i];
+        sourceNodesOrderedByRadius.push_back({source.first, source.second, i});
+    }
+    std::sort(sourceNodesOrderedByRadius.begin(), sourceNodesOrderedByRadius.end(), [](
+            const std::tuple<QVector3D, float, size_t> &first,
+            const std::tuple<QVector3D, float, size_t> &second) {
+        return std::get<1>(first) < std::get<1>(second);
+    });
+    std::vector<size_t> sourceNodeParents(sourceNodesOrderedByRadius.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, sourceNodesOrderedByRadius.size()),
+        SphereParentFinder(&sourceNodesOrderedByRadius, &sourceNodeParents));
+    std::vector<size_t> sourceNodeAttachMap(sourceNodes.size());
+    for (size_t i = 0; i < sourceNodeParents.size(); ++i) {
+        sourceNodeAttachMap[std::get<2>(sourceNodesOrderedByRadius[i])] =
+            std::get<2>(sourceNodesOrderedByRadius[sourceNodeParents[i]]);
+    }
+    
+    // Resolve the faces's source nodes
     faceSources->resize(faces.size(), std::numeric_limits<size_t>::max());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, faces.size()),
         FacesToNodesProjector(&vertices, &faces, &sourceNodes, faceSources));
+    
+    // Replace the source node which is contained in bigger sphere
+    for (size_t i = 0; i < faceSources->size(); ++i) {
+        auto &source = (*faceSources)[i];
+        if (source == std::numeric_limits<size_t>::max())
+            continue;
+        source = sourceNodeAttachMap[source];
+    }
 }
