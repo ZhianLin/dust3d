@@ -169,35 +169,26 @@ void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>>
             (*resultNodes)[i] = source[0];
             continue;
         }
-        //if (i < 2) {
-            std::vector<std::pair<size_t, float>> radisArray(source.size());
-            for (size_t j = 0; j < source.size(); ++j) {
-                radisArray[j] = {
-                    source[j],
-                    m_outcome->bodyNodes[source[j]].radius
-                };
+        bool foundJoint = false;
+        std::vector<std::pair<size_t, float>> radisArray(source.size());
+        for (size_t j = 0; j < source.size(); ++j) {
+            const auto &bodyNode = m_outcome->bodyNodes[source[j]];
+            if (BoneMark::None != bodyNode.boneMark) {
+                foundJoint = true;
+                (*resultNodes)[i] = source[j];
+                break;
             }
-            (*resultNodes)[i] = std::max_element(radisArray.begin(), radisArray.end(), [](const std::pair<size_t, float> &first,
-                        const std::pair<size_t, float> &second) {
-                    return first.second < second.second;
-                })->first;
-        //    continue;
-        //}
-        //QVector3D lastDirection = (m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin -
-        //    m_outcome->bodyNodes[(*resultNodes)[i - 2]].origin).normalized();
-        //const auto &lastPosition = m_outcome->bodyNodes[(*resultNodes)[i - 1]].origin;
-        //std::vector<std::pair<size_t, float>> anglesArray(source.size());
-        //for (size_t j = 0; j < source.size(); ++j) {
-        //    auto direction = (m_outcome->bodyNodes[source[j]].origin - lastPosition).normalized();
-        //    anglesArray[j] = {
-        //        source[j],
-        //        radianBetweenVectors(lastDirection, direction)
-        //    };
-        //}
-        //(*resultNodes)[i] = std::min_element(anglesArray.begin(), anglesArray.end(), [](const std::pair<size_t, float> &first,
-        //            const std::pair<size_t, float> &second) {
-        //        return first.second < second.second;
-        //    })->first;
+            radisArray[j] = {
+                source[j],
+                bodyNode.radius
+            };
+        }
+        if (foundJoint)
+            continue;
+        (*resultNodes)[i] = std::max_element(radisArray.begin(), radisArray.end(), [](const std::pair<size_t, float> &first,
+                    const std::pair<size_t, float> &second) {
+                return first.second < second.second;
+            })->first;
     }
 }
 
