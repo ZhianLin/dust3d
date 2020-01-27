@@ -5,10 +5,10 @@
 #include "projectfacestonodes.h"
 #include "util.h"
 
-class FacesToNodesProjector
+class FacesToNearestNodesProjector
 {
 public:
-    FacesToNodesProjector(const std::vector<QVector3D> *vertices,
+    FacesToNearestNodesProjector(const std::vector<QVector3D> *vertices,
             const std::vector<std::vector<size_t>> *faces,
             const std::vector<std::pair<QVector3D, float>> *sourceNodes,
             std::vector<size_t> *faceSources) :
@@ -132,7 +132,7 @@ void projectFacesToNodes(const std::vector<QVector3D> &vertices,
     // Resolve the faces's source nodes
     faceSources->resize(faces.size(), std::numeric_limits<size_t>::max());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, faces.size()),
-        FacesToNodesProjector(&vertices, &faces, &sourceNodes, faceSources));
+        FacesToNearestNodesProjector(&vertices, &faces, &sourceNodes, faceSources));
     
     // Replace the source node which is contained in bigger sphere
     for (size_t i = 0; i < faceSources->size(); ++i) {

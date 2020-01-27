@@ -2,39 +2,46 @@
 #include "boundingboxmesh.h"
 #include "meshloader.h"
 
-ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, QVector3D, float>> &boxes,
+ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, QVector3D, float, float>> &boxes,
         int *edgeVerticesNum)
 {
     int numPerItem = 12 * 2;
     *edgeVerticesNum = boxes.size() * numPerItem;
     
-    auto generateForBox = [&](const std::tuple<QVector3D, QVector3D, float> &box, ShaderVertex *vertices) {
+    auto generateForBox = [&](const std::tuple<QVector3D, QVector3D, float, float> &box, ShaderVertex *vertices) {
         const auto &headPosition = std::get<0>(box);
         const auto &tailPosition = std::get<1>(box);
-        float radius = std::get<2>(box);
+        float headRadius = std::get<2>(box);
+        float tailRadius = std::get<3>(box);
         QVector3D direction = tailPosition - headPosition;
         QVector3D cutNormal = direction.normalized();
         QVector3D baseNormal = QVector3D(0, 0, 1);
         QVector3D u = QVector3D::crossProduct(cutNormal, baseNormal).normalized();
         QVector3D v = QVector3D::crossProduct(u, cutNormal).normalized();
-        auto uFactor = u * radius;
-        auto vFactor = v * radius;
+        auto uHeadFactor = u * headRadius;
+        auto vHeadFactor = v * headRadius;
+        auto uTailFactor = u * tailRadius;
+        auto vTailFactor = v * tailRadius;
         const std::vector<QVector2D> cutFaceTemplate = {QVector2D((float)-1.0, (float)-1.0),
             QVector2D((float)1.0, (float)-1.0),
             QVector2D((float)1.0,  (float)1.0),
             QVector2D((float)-1.0,  (float)1.0)
         };
-        std::vector<QVector3D> resultCut;
+        std::vector<QVector3D> resultHeadCut;
         for (const auto &t: cutFaceTemplate) {
-            resultCut.push_back(uFactor * t.x() + vFactor * t.y());
+            resultHeadCut.push_back(uHeadFactor * t.x() + vHeadFactor * t.y());
+        }
+        std::vector<QVector3D> resultTailCut;
+        for (const auto &t: cutFaceTemplate) {
+            resultTailCut.push_back(uTailFactor * t.x() + vTailFactor * t.y());
         }
         std::vector<QVector3D> headRing;
         std::vector<QVector3D> tailRing;
         std::vector<QVector3D> finalizedPoints;
-        for (const auto &it: resultCut) {
+        for (const auto &it: resultHeadCut) {
             headRing.push_back(it + headPosition);
         }
-        for (const auto &it: resultCut) {
+        for (const auto &it: resultTailCut) {
             tailRing.push_back(it + tailPosition);
         }
         for (size_t i = 0; i < headRing.size(); ++i) {
@@ -83,7 +90,7 @@ ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, 
     return edgeVertices;
 }
 
-MeshLoader *buildBoundingBoxMesh(const std::vector<std::tuple<QVector3D, QVector3D, float>> &boxes)
+MeshLoader *buildBoundingBoxMesh(const std::vector<std::tuple<QVector3D, QVector3D, float, float>> &boxes)
 {
     int edgeVerticesNum = 0;
     ShaderVertex *edgeVertices = buildBoundingBoxMeshEdges(boxes, &edgeVerticesNum);
