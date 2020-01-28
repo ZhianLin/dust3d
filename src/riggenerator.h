@@ -62,6 +62,7 @@ private:
     void buildNeighborMap();
     void buildBoneNodeChain();
     void buildSkeleton();
+    void computeSkinWeights();
     void buildDemoMesh();
     void calculateSpineDirection(bool *isVertical);
     void attachLimbsToSpine();

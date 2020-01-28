@@ -503,9 +503,6 @@ HEADERS += src/projectfacestonodes.h
 SOURCES += src/simulateclothmeshes.cpp
 HEADERS += src/simulateclothmeshes.h
 
-SOURCES += src/computeskinweights.cpp
-HEADERS += src/computeskinweights.h
-
 SOURCES += src/main.cpp
 
 HEADERS += src/version.h

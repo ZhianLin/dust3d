@@ -9,7 +9,6 @@
 #include <iostream>
 #include "riggenerator.h"
 #include "util.h"
-#include "computeskinweights.h"
 #include "boundingboxmesh.h"
 #include "theme.h"
 
@@ -389,13 +388,14 @@ void RigGenerator::buildSkeleton()
     extractBranchJoints();
     
     std::map<QString, int> boneNameToIndexMap;
-    size_t rootJointIndex = m_attachLimbsToSpineJointIndices[0];
+    size_t rootSpineJointIndex = m_attachLimbsToSpineJointIndices[0];
+    size_t lastSpineJointIndex = m_spineJoints.size() - 1;
     
     m_resultBones = new std::vector<RiggerBone>;
     m_resultWeights = new std::map<int, RiggerVertexWeights>;
     
     {
-        const auto &firstSpineNode = m_outcome->bodyNodes[m_spineJoints[rootJointIndex]];
+        const auto &firstSpineNode = m_outcome->bodyNodes[m_spineJoints[rootSpineJointIndex]];
         RiggerBone bone;
         bone.headPosition = QVector3D(0.0, 0.0, 0.0);
         bone.tailPosition = firstSpineNode.origin;
@@ -408,13 +408,13 @@ void RigGenerator::buildSkeleton()
     }
     
     auto attachedBoneIndex = [&](size_t spineJointIndex) {
-        if (spineJointIndex == rootJointIndex) {
+        if (spineJointIndex == rootSpineJointIndex) {
             return boneNameToIndexMap[QString("Body")];
         }
-        return boneNameToIndexMap[QString("Spine") + QString::number(spineJointIndex - rootJointIndex)];
+        return boneNameToIndexMap[QString("Spine") + QString::number(spineJointIndex - rootSpineJointIndex)];
     };
     
-    for (size_t spineJointIndex = rootJointIndex;
+    for (size_t spineJointIndex = rootSpineJointIndex;
             spineJointIndex + 1 < m_spineJoints.size();
             ++spineJointIndex) {
         const auto &currentNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
@@ -425,7 +425,7 @@ void RigGenerator::buildSkeleton()
         bone.headRadius = currentNode.radius;
         bone.tailRadius = nextNode.radius;
         bone.color = Qt::magenta;
-        bone.name = QString("Spine") + QString::number(spineJointIndex + 1 - rootJointIndex);
+        bone.name = QString("Spine") + QString::number(spineJointIndex + 1 - rootSpineJointIndex);
         bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
         m_resultBones->push_back(bone);
@@ -513,13 +513,16 @@ void RigGenerator::buildSkeleton()
             if (neckJointIndex > 0) {
                 auto parentName = QString("Neck_Joint") + QString::number(neckJointIndex);
                 (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            } else {
+                auto parentName = QString("Spine") + QString::number(lastSpineJointIndex - rootSpineJointIndex);
+                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
     }
     
     if (!m_tailJoints.empty()) {
         {
-            const auto &spineJointIndex = rootJointIndex;
+            const auto &spineJointIndex = rootSpineJointIndex;
             const auto &spineNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
             const auto &tailFirstNode = m_outcome->bodyNodes[m_tailJoints[0]];
             RiggerBone bone;
@@ -556,29 +559,24 @@ void RigGenerator::buildSkeleton()
         }
     }
     
-    if (!m_resultBones->empty()) {
-        //for (size_t i = 0; i < m_resultBones->size(); ++i) {
-        //    const auto &resultBone = (*m_resultBones)[i];
-        //    printf("bone[%lu] index:%d name:\"%s\"\r\n", i, resultBone.index, resultBone.name.toUtf8().constData());
-        //    for (const auto &it: resultBone.children) {
-        //        const auto &childBone = (*m_resultBones)[it];
-        //        printf("    child[%d] index:%d name:\"%s\"\r\n", it, childBone.index, childBone.name.toUtf8().constData());
-        //    }
-        //}
-        
-        computeSkinWeights(m_outcome->vertices, m_outcome->triangles,
-            *m_resultBones, m_resultWeights);
-        
-        //for (const auto &it: *m_resultWeights) {
-        //    std::cout << "vertex:" << it.first << std::endl;
-        //    std::cout << it.second.boneIndices[0] << ": " << it.second.boneWeights[0] << std::endl;
-        //    std::cout << it.second.boneIndices[1] << ": " << it.second.boneWeights[1] << std::endl;
-        //    std::cout << it.second.boneIndices[2] << ": " << it.second.boneWeights[2] << std::endl;
-        //    std::cout << it.second.boneIndices[3] << ": " << it.second.boneWeights[3] << std::endl;
-        //}
+    for (size_t i = 0; i < m_resultBones->size(); ++i) {
+        const auto &bone = (*m_resultBones)[i];
+        printf("bone[%d] name:\"%s\"\r\n", bone.index, bone.name.toUtf8().constData());
+        for (const auto &childIndex: bone.children) {
+            const auto &child = (*m_resultBones)[childIndex];
+            printf("    bone[%d] name:\"%s\"\r\n", child.index, child.name.toUtf8().constData());
+        }
     }
     
     m_isSucceed = true;
+}
+
+void RigGenerator::computeSkinWeights()
+{
+    if (m_isSucceed)
+        return;
+    
+    // TODO:
 }
 
 void RigGenerator::extractBranchJoints()
@@ -811,6 +809,7 @@ void RigGenerator::generate()
     buildNeighborMap();
     buildBoneNodeChain();
     buildSkeleton();
+    computeSkinWeights();
     buildDemoMesh();
 }
 

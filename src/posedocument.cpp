@@ -476,7 +476,11 @@ void PoseDocument::parametersToNodes(const std::vector<RiggerBone> *rigBones,
             //qDebug() << "Add pair:" << bone.name << "->" << "~";
             continue;
         }
+        if (boneIndexToHeadNodeIdMap.find(i) == boneIndexToHeadNodeIdMap.end())
+            continue;
         for (const auto &child: bone.children) {
+            if (boneIndexToHeadNodeIdMap.find(child) == boneIndexToHeadNodeIdMap.end())
+                continue;
             (*boneNameToIdsMap)[bone.name] = {boneIndexToHeadNodeIdMap[i], boneIndexToHeadNodeIdMap[child]};
         }
     }
@@ -552,11 +556,13 @@ void PoseDocument::toParameters(std::map<QString, std::map<QString, QString>> &p
     for (const auto &item: m_boneNameToIdsMap) {
         const auto &boneNodeIdPair = item.second;
         auto findFirstNode = nodeMap.find(boneNodeIdPair.first);
-        if (findFirstNode == nodeMap.end())
+        if (findFirstNode == nodeMap.end()) {
             continue;
+        }
         auto findSecondNode = nodeMap.find(boneNodeIdPair.second);
-        if (findSecondNode == nodeMap.end())
+        if (findSecondNode == nodeMap.end()) {
             continue;
+        }
         if (limitNodeIds.empty() || limitNodeIds.find(boneNodeIdPair.first) != limitNodeIds.end() ||
                 limitNodeIds.find(boneNodeIdPair.second) != limitNodeIds.end()) {
             auto &boneParameter = parameters[item.first];
