@@ -336,6 +336,8 @@ void RigGenerator::attachLimbsToSpine()
                 (m_outcome->bodyNodes[nodeIndex].origin - limbMiddle).lengthSquared()
             });
         }
+        if (distance2WithSpine.empty())
+            continue;
         auto chainPos = std::min_element(distance2WithSpine.begin(), distance2WithSpine.end(), [](
                 const std::pair<size_t, float> &first, const std::pair<size_t, float> &second) {
             return first.second < second.second;
