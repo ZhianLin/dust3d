@@ -2,17 +2,18 @@
 #include "boundingboxmesh.h"
 #include "meshloader.h"
 
-ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, QVector3D, float, float>> &boxes,
+ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, QVector3D, float, float, QColor>> &boxes,
         int *edgeVerticesNum)
 {
     int numPerItem = 12 * 2;
     *edgeVerticesNum = boxes.size() * numPerItem;
     
-    auto generateForBox = [&](const std::tuple<QVector3D, QVector3D, float, float> &box, ShaderVertex *vertices) {
+    auto generateForBox = [&](const std::tuple<QVector3D, QVector3D, float, float, QColor> &box, ShaderVertex *vertices) {
         const auto &headPosition = std::get<0>(box);
         const auto &tailPosition = std::get<1>(box);
         float headRadius = std::get<2>(box);
         float tailRadius = std::get<3>(box);
+        const auto &color = std::get<4>(box);
         QVector3D direction = tailPosition - headPosition;
         QVector3D cutNormal = direction.normalized();
         QVector3D baseNormal = QVector3D(0, 0, 1);
@@ -64,11 +65,11 @@ ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, 
             currentVertex.posZ = sourcePosition.z();
             currentVertex.texU = 0;
             currentVertex.texV = 0;
-            currentVertex.colorR = 0.0;
-            currentVertex.colorG = 0.0;
-            currentVertex.colorB = 0.0;
+            currentVertex.colorR = color.redF();
+            currentVertex.colorG = color.greenF();
+            currentVertex.colorB = color.blueF();
             currentVertex.normX = 0;
-            currentVertex.normY = 0;
+            currentVertex.normY = 1;
             currentVertex.normZ = 0;
             currentVertex.metalness = MeshLoader::m_defaultMetalness;
             currentVertex.roughness = MeshLoader::m_defaultRoughness;
@@ -90,7 +91,7 @@ ShaderVertex *buildBoundingBoxMeshEdges(const std::vector<std::tuple<QVector3D, 
     return edgeVertices;
 }
 
-MeshLoader *buildBoundingBoxMesh(const std::vector<std::tuple<QVector3D, QVector3D, float, float>> &boxes)
+MeshLoader *buildBoundingBoxMesh(const std::vector<std::tuple<QVector3D, QVector3D, float, float, QColor>> &boxes)
 {
     int edgeVerticesNum = 0;
     ShaderVertex *edgeVertices = buildBoundingBoxMeshEdges(boxes, &edgeVerticesNum);

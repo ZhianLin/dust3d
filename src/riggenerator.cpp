@@ -559,15 +559,6 @@ void RigGenerator::buildSkeleton()
         }
     }
     
-    for (size_t i = 0; i < m_resultBones->size(); ++i) {
-        const auto &bone = (*m_resultBones)[i];
-        printf("bone[%d] name:\"%s\"\r\n", bone.index, bone.name.toUtf8().constData());
-        for (const auto &childIndex: bone.children) {
-            const auto &child = (*m_resultBones)[childIndex];
-            printf("    bone[%d] name:\"%s\"\r\n", child.index, child.name.toUtf8().constData());
-        }
-    }
-    
     m_isSucceed = true;
 }
 
@@ -790,12 +781,12 @@ void RigGenerator::buildDemoMesh()
     
     if (m_isSucceed) {
         const auto &resultBones = *m_resultBones;
-        std::vector<std::tuple<QVector3D, QVector3D, float, float>> boxes;
+        std::vector<std::tuple<QVector3D, QVector3D, float, float, QColor>> boxes;
         for (const auto &bone: resultBones) {
             //if (bone.name.startsWith("Virtual") || bone.name.startsWith("Body"))
             //    continue;
             boxes.push_back(std::make_tuple(bone.headPosition, bone.tailPosition,
-                bone.headRadius, bone.tailRadius));
+                bone.headRadius, bone.tailRadius, bone.color));
         }
         edgeVertices = buildBoundingBoxMeshEdges(boxes, &edgeVerticesNum);
     }
