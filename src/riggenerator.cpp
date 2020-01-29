@@ -7,6 +7,7 @@
 #include <QVector2D>
 #include <queue>
 #include <iostream>
+#include <unordered_map>
 #include "riggenerator.h"
 #include "util.h"
 #include "boundingboxmesh.h"
@@ -389,7 +390,6 @@ void RigGenerator::buildSkeleton()
     extractSpineJoints();
     extractBranchJoints();
     
-    std::map<QString, int> boneNameToIndexMap;
     size_t rootSpineJointIndex = m_attachLimbsToSpineJointIndices[0];
     size_t lastSpineJointIndex = m_spineJoints.size() - 1;
     
@@ -405,15 +405,15 @@ void RigGenerator::buildSkeleton()
         bone.tailRadius = firstSpineNode.radius;
         bone.name = QString("Body");
         bone.index = m_resultBones->size();
-        boneNameToIndexMap.insert({bone.name, (int)bone.index});
+        m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
         m_resultBones->push_back(bone);
     }
     
     auto attachedBoneIndex = [&](size_t spineJointIndex) {
         if (spineJointIndex == rootSpineJointIndex) {
-            return boneNameToIndexMap[QString("Body")];
+            return m_boneNameToIndexMap[QString("Body")];
         }
-        return boneNameToIndexMap[QString("Spine") + QString::number(spineJointIndex - rootSpineJointIndex)];
+        return m_boneNameToIndexMap[QString("Spine") + QString::number(spineJointIndex - rootSpineJointIndex)];
     };
     
     for (size_t spineJointIndex = rootSpineJointIndex;
@@ -429,7 +429,7 @@ void RigGenerator::buildSkeleton()
         bone.color = Theme::white;
         bone.name = QString("Spine") + QString::number(spineJointIndex + 1 - rootSpineJointIndex);
         bone.index = m_resultBones->size();
-        boneNameToIndexMap.insert({bone.name, (int)bone.index});
+        m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
         m_resultBones->push_back(bone);
         (*m_resultBones)[attachedBoneIndex(spineJointIndex)].children.push_back(bone.index);
     }
@@ -450,7 +450,7 @@ void RigGenerator::buildSkeleton()
         bone.color = Theme::white;
         bone.name = QString("Virtual_") + (*m_resultBones)[parentIndex].name + QString("_") + chainName;
         bone.index = m_resultBones->size();
-        boneNameToIndexMap.insert({bone.name, (int)bone.index});
+        m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
         m_resultBones->push_back(bone);
         (*m_resultBones)[parentIndex].children.push_back(bone.index);
     };
@@ -473,16 +473,16 @@ void RigGenerator::buildSkeleton()
             bone.color = BoneMarkToColor(BoneMark::Limb);
             bone.name = chainName + QString("_Joint") + QString::number(limbJointIndex + 1);
             bone.index = m_resultBones->size();
-            boneNameToIndexMap.insert({bone.name, (int)bone.index});
+            m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
             if (limbJointIndex > 0) {
                 auto parentName = chainName + QString("_Joint") + QString::number(limbJointIndex);
-                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             } else {
                 const auto &spineJointIndex = m_attachLimbsToSpineJointIndices[limbIndex];
                 const auto &parentIndex = attachedBoneIndex(spineJointIndex);
                 auto parentName = QString("Virtual_") + (*m_resultBones)[parentIndex].name + QString("_") + chainName;
-                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
     };
@@ -510,14 +510,14 @@ void RigGenerator::buildSkeleton()
             bone.color = BoneMarkToColor(BoneMark::Neck);
             bone.name = QString("Neck_Joint") + QString::number(neckJointIndex + 1);
             bone.index = m_resultBones->size();
-            boneNameToIndexMap.insert({bone.name, (int)bone.index});
+            m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
             if (neckJointIndex > 0) {
                 auto parentName = QString("Neck_Joint") + QString::number(neckJointIndex);
-                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             } else {
                 auto parentName = QString("Spine") + QString::number(lastSpineJointIndex - rootSpineJointIndex);
-                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
     }
@@ -535,7 +535,7 @@ void RigGenerator::buildSkeleton()
             bone.color = Theme::white;
             bone.name = QString("Virtual_Body_Tail");
             bone.index = m_resultBones->size();
-            boneNameToIndexMap.insert({bone.name, (int)bone.index});
+            m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
         }
     
@@ -552,11 +552,11 @@ void RigGenerator::buildSkeleton()
             bone.color = BoneMarkToColor(BoneMark::Tail);
             bone.name = QString("Tail_Joint") + QString::number(tailJointIndex + 1);
             bone.index = m_resultBones->size();
-            boneNameToIndexMap.insert({bone.name, (int)bone.index});
+            m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
             if (tailJointIndex > 0) {
                 auto parentName = QString("Tail_Joint") + QString::number(tailJointIndex);
-                (*m_resultBones)[boneNameToIndexMap[parentName]].children.push_back(bone.index);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
     }
@@ -569,7 +569,127 @@ void RigGenerator::computeSkinWeights()
     if (m_isSucceed)
         return;
     
-    // TODO:
+    auto collectNodeIndices = [&](size_t chainIndex,
+            std::unordered_map<size_t, size_t> *nodeIndexToContainerMap,
+            size_t containerIndex) {
+        const auto &chain = m_boneNodeChain[chainIndex];
+        for (const auto &it: chain.nodeIndices)
+            nodeIndexToContainerMap->insert({it, containerIndex});
+        nodeIndexToContainerMap->insert({chain.fromNodeIndex, containerIndex});
+    };
+    
+    const size_t neckIndex = 0;
+    const size_t tailIndex = 1;
+    const size_t spineIndex = 2;
+    const size_t limbStartIndex = 3;
+    
+    std::unordered_map<size_t, size_t> nodeIndicesToBranchMap;
+    
+    if (!m_neckChains.empty())
+        collectNodeIndices(m_neckChains[0], &nodeIndicesToBranchMap, neckIndex);
+    
+    if (!m_tailChains.empty())
+        collectNodeIndices(m_tailChains[0], &nodeIndicesToBranchMap, tailIndex);
+    
+    if (!m_spineChains.empty()) {
+        collectNodeIndices(m_spineChains[0], &nodeIndicesToBranchMap, spineIndex);
+        if (!m_neckChains.empty()) {
+            const auto &chain = m_boneNodeChain[m_neckChains[0]];
+            nodeIndicesToBranchMap.erase(chain.fromNodeIndex);
+        }
+        if (!m_tailChains.empty()) {
+            const auto &chain = m_boneNodeChain[m_tailChains[0]];
+            nodeIndicesToBranchMap.erase(chain.fromNodeIndex);
+        }
+    }
+    
+    for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
+        collectNodeIndices(m_leftLimbChains[i], &nodeIndicesToBranchMap,
+            limbStartIndex + i);
+    }
+    
+    for (size_t i = 0; i < m_rightLimbChains.size(); ++i) {
+        collectNodeIndices(m_rightLimbChains[i], &nodeIndicesToBranchMap,
+            limbStartIndex + m_leftLimbChains.size() + i);
+    }
+    
+    std::vector<std::vector<size_t>> vertexBranches(limbStartIndex +
+        m_leftLimbChains.size() +
+        m_rightLimbChains.size() +
+        1);
+    
+    std::map<std::pair<QUuid, QUuid>, size_t> nodeIdToIndexMap;
+    for (size_t nodeIndex = 0; nodeIndex < m_outcome->nodes.size(); ++nodeIndex) {
+        const auto &node = m_outcome->nodes[nodeIndex];
+        nodeIdToIndexMap[{node.partId, node.nodeId}] = nodeIndex;
+    }
+    for (size_t vertexIndex = 0; vertexIndex < m_outcome->vertices.size(); ++vertexIndex) {
+        const auto &vertexSourceId = m_outcome->vertexSourceNodes[vertexIndex];
+        auto findNodeIndex = nodeIdToIndexMap.find(vertexSourceId);
+        if (findNodeIndex == nodeIdToIndexMap.end())
+            continue;
+        const auto &nodeIndex = findNodeIndex->second;
+        auto findBranch = nodeIndicesToBranchMap.find(nodeIndex);
+        if (findBranch == nodeIndicesToBranchMap.end())
+            continue;
+        vertexBranches[findBranch->second].push_back(vertexIndex);
+    }
+    
+    auto findNeckBoneIndex = m_boneNameToIndexMap.find(QString("Neck_Joint1"));
+    if (findNeckBoneIndex != m_boneNameToIndexMap.end()) {
+        computeBranchSkinWeights(findNeckBoneIndex->second,
+            QString("Neck_"), vertexBranches[neckIndex]);
+    }
+    
+    auto findTailBoneIndex = m_boneNameToIndexMap.find(QString("Tail_Joint1"));
+    if (findTailBoneIndex != m_boneNameToIndexMap.end()) {
+        computeBranchSkinWeights(findTailBoneIndex->second,
+            QString("Tail_"), vertexBranches[tailIndex]);
+    }
+    
+    auto findSpineBoneIndex = m_boneNameToIndexMap.find(QString("Spine1"));
+    if (findSpineBoneIndex != m_boneNameToIndexMap.end()) {
+        computeBranchSkinWeights(findSpineBoneIndex->second,
+            QString("Spine"), vertexBranches[spineIndex]);
+    }
+    
+    for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
+        auto namePrefix = QString("LeftLimb") + QString::number(i + 1) + "_";
+        auto findLimbBoneIndex = m_boneNameToIndexMap.find(namePrefix + "Joint1");
+        if (findLimbBoneIndex != m_boneNameToIndexMap.end()) {
+            computeBranchSkinWeights(findLimbBoneIndex->second,
+                namePrefix, vertexBranches[limbStartIndex + i]);
+        }
+    }
+    
+    for (size_t i = 0; i < m_rightLimbChains.size(); ++i) {
+        auto namePrefix = QString("RightLimb") + QString::number(i + 1) + "_";
+        auto findLimbBoneIndex = m_boneNameToIndexMap.find(namePrefix + "Joint1");
+        if (findLimbBoneIndex != m_boneNameToIndexMap.end()) {
+            computeBranchSkinWeights(findLimbBoneIndex->second,
+                namePrefix, vertexBranches[limbStartIndex + m_leftLimbChains.size() + i]);
+        }
+    }
+}
+
+void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
+        const QString &boneNamePrefix,
+        const std::vector<size_t> &vertexIndices)
+{
+    size_t boneIndex = fromBoneIndex;
+    std::vector<size_t> remainVertexIndices;
+    while (true) {
+        const auto &bone = (*m_resultBones)[boneIndex];
+        if (bone.children.empty()) {
+            // TODO: bone.index remainVertexIndices
+            break;
+        }
+        const auto &child = (*m_resultBones)[bone.children[0]];
+        //(bone.tailPosition - bone.headPosition).normalized();
+        //(child.tailPosition - child.headPosition).normalized();
+        // TODO:
+        boneIndex = bone.children[0];
+    }
 }
 
 void RigGenerator::extractBranchJoints()

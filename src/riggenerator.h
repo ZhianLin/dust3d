@@ -57,6 +57,7 @@ private:
     std::vector<std::vector<size_t>> m_rightLimbJoints;
     std::vector<size_t> m_tailJoints;
     std::vector<size_t> m_spineJoints;
+    std::map<QString, int> m_boneNameToIndexMap;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();
@@ -68,6 +69,9 @@ private:
     void attachLimbsToSpine();
     void extractSpineJoints();
     void extractBranchJoints();
+    void computeBranchSkinWeights(size_t fromBoneIndex,
+        const QString &boneNamePrefix,
+        const std::vector<size_t> &vertexIndices);
     void splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *left,
         std::unordered_set<size_t> *right);
