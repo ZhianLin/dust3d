@@ -426,7 +426,7 @@ void RigGenerator::buildSkeleton()
         bone.tailPosition = nextNode.origin;
         bone.headRadius = currentNode.radius;
         bone.tailRadius = nextNode.radius;
-        bone.color = Qt::magenta;
+        bone.color = Theme::white;
         bone.name = QString("Spine") + QString::number(spineJointIndex + 1 - rootSpineJointIndex);
         bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -447,7 +447,7 @@ void RigGenerator::buildSkeleton()
         bone.tailPosition = limbFirstNode.origin;
         bone.headRadius = spineNode.radius;
         bone.tailRadius = limbFirstNode.radius;
-        bone.color = Qt::green;
+        bone.color = Theme::white;
         bone.name = QString("Virtual_") + (*m_resultBones)[parentIndex].name + QString("_") + chainName;
         bone.index = m_resultBones->size();
         boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -470,7 +470,7 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = nextNode.origin;
             bone.headRadius = currentNode.radius;
             bone.tailRadius = nextNode.radius;
-            bone.color = limbJointIndex % 2 == 0 ? Qt::red : Qt::blue;
+            bone.color = BoneMarkToColor(BoneMark::Limb);
             bone.name = chainName + QString("_Joint") + QString::number(limbJointIndex + 1);
             bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -507,7 +507,7 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = nextNode.origin;
             bone.headRadius = currentNode.radius;
             bone.tailRadius = nextNode.radius;
-            bone.color = Qt::blue;
+            bone.color = BoneMarkToColor(BoneMark::Neck);
             bone.name = QString("Neck_Joint") + QString::number(neckJointIndex + 1);
             bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -532,7 +532,7 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = tailFirstNode.origin;
             bone.headRadius = spineNode.radius;
             bone.tailRadius = tailFirstNode.radius;
-            bone.color = Qt::cyan;
+            bone.color = Theme::white;
             bone.name = QString("Virtual_Body_Tail");
             bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -549,7 +549,7 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = nextNode.origin;
             bone.headRadius = currentNode.radius;
             bone.tailRadius = nextNode.radius;
-            bone.color = Qt::yellow;
+            bone.color = BoneMarkToColor(BoneMark::Tail);
             bone.name = QString("Tail_Joint") + QString::number(tailJointIndex + 1);
             bone.index = m_resultBones->size();
             boneNameToIndexMap.insert({bone.name, (int)bone.index});
