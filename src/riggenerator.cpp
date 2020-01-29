@@ -566,7 +566,7 @@ void RigGenerator::buildSkeleton()
 
 void RigGenerator::computeSkinWeights()
 {
-    if (m_isSucceed)
+    if (!m_isSucceed)
         return;
     
     auto collectNodeIndices = [&](size_t chainIndex,
@@ -670,6 +670,9 @@ void RigGenerator::computeSkinWeights()
                 namePrefix, vertexBranches[limbStartIndex + m_leftLimbChains.size() + i]);
         }
     }
+    
+    for (auto &it: *m_resultWeights)
+        it.second.finalizeWeights();
 }
 
 void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
@@ -677,17 +680,33 @@ void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
         const std::vector<size_t> &vertexIndices)
 {
     size_t boneIndex = fromBoneIndex;
-    std::vector<size_t> remainVertexIndices;
+    std::vector<size_t> remainVertexIndices = vertexIndices;
     while (true) {
         const auto &bone = (*m_resultBones)[boneIndex];
+        if (!bone.name.startsWith(boneNamePrefix))
+            break;
         if (bone.children.empty()) {
-            // TODO: bone.index remainVertexIndices
+            for (const auto &vertexIndex: remainVertexIndices) {
+                (*m_resultWeights)[vertexIndex].addBone(boneIndex, 1.0);
+            }
             break;
         }
         const auto &child = (*m_resultBones)[bone.children[0]];
-        //(bone.tailPosition - bone.headPosition).normalized();
-        //(child.tailPosition - child.headPosition).normalized();
-        // TODO:
+        auto forward = (((bone.tailPosition - bone.headPosition).normalized() +
+            (child.tailPosition - child.headPosition).normalized()) * 0.5).normalized();
+        std::vector<size_t> newRemainVertexIndices;
+        for (const auto &vertexIndex: remainVertexIndices) {
+            const auto &position = m_outcome->vertices[vertexIndex];
+            auto direction = (position - bone.tailPosition).normalized();
+            if (QVector3D::dotProduct(direction, forward) > 0) {
+                newRemainVertexIndices.push_back(vertexIndex);
+            } else {
+                for (const auto &vertexIndex: remainVertexIndices) {
+                    (*m_resultWeights)[vertexIndex].addBone(boneIndex, 1.0);
+                }
+            }
+        }
+        remainVertexIndices = newRemainVertexIndices;
         boneIndex = bone.children[0];
     }
 }
