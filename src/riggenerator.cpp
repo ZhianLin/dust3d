@@ -568,23 +568,16 @@ void RigGenerator::computeSkinWeights()
 {
     if (!m_isSucceed)
         return;
-    
-    std::map<QUuid, std::map<size_t, size_t>> partIdToBranchMap;
-    
+
     auto collectNodeIndices = [&](size_t chainIndex,
             std::unordered_map<size_t, size_t> *nodeIndexToContainerMap,
             size_t containerIndex) {
         const auto &chain = m_boneNodeChain[chainIndex];
         for (const auto &it: chain.nodeIndices) {
-            partIdToBranchMap[m_outcome->bodyNodes[it].partId][containerIndex]++;
             nodeIndexToContainerMap->insert({it, containerIndex});
         }
         nodeIndexToContainerMap->insert({chain.fromNodeIndex, containerIndex});
-        partIdToBranchMap[m_outcome->bodyNodes[chain.fromNodeIndex].partId][containerIndex]++;
     };
-    
-    // TODO: partIdToBranchMap
-
     
     const size_t neckIndex = 0;
     const size_t tailIndex = 1;
@@ -599,17 +592,8 @@ void RigGenerator::computeSkinWeights()
     if (!m_tailChains.empty())
         collectNodeIndices(m_tailChains[0], &nodeIndicesToBranchMap, tailIndex);
     
-    if (!m_spineChains.empty()) {
+    if (!m_spineChains.empty())
         collectNodeIndices(m_spineChains[0], &nodeIndicesToBranchMap, spineIndex);
-        if (!m_neckChains.empty()) {
-            const auto &chain = m_boneNodeChain[m_neckChains[0]];
-            nodeIndicesToBranchMap.erase(chain.fromNodeIndex);
-        }
-        if (!m_tailChains.empty()) {
-            const auto &chain = m_boneNodeChain[m_tailChains[0]];
-            nodeIndicesToBranchMap.erase(chain.fromNodeIndex);
-        }
-    }
     
     for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
         collectNodeIndices(m_leftLimbChains[i], &nodeIndicesToBranchMap,
@@ -681,6 +665,17 @@ void RigGenerator::computeSkinWeights()
     
     for (auto &it: *m_resultWeights)
         it.second.finalizeWeights();
+    
+    for (size_t i = 0; i < m_outcome->vertices.size(); ++i) {
+        auto findWeights = m_resultWeights->find(i);
+        if (findWeights == m_resultWeights->end()) {
+            const auto &sourceNode = m_outcome->vertexSourceNodes[i];
+            printf("NoWeight vertex index:%lu Source:%s %s\r\n",
+                i,
+                sourceNode.first.toString().toUtf8().constData(),
+                sourceNode.second.toString().toUtf8().constData());
+        }
+    }
 }
 
 void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
