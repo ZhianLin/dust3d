@@ -569,14 +569,22 @@ void RigGenerator::computeSkinWeights()
     if (!m_isSucceed)
         return;
     
+    std::map<QUuid, std::map<size_t, size_t>> partIdToBranchMap;
+    
     auto collectNodeIndices = [&](size_t chainIndex,
             std::unordered_map<size_t, size_t> *nodeIndexToContainerMap,
             size_t containerIndex) {
         const auto &chain = m_boneNodeChain[chainIndex];
-        for (const auto &it: chain.nodeIndices)
+        for (const auto &it: chain.nodeIndices) {
+            partIdToBranchMap[m_outcome->bodyNodes[it].partId][containerIndex]++;
             nodeIndexToContainerMap->insert({it, containerIndex});
+        }
         nodeIndexToContainerMap->insert({chain.fromNodeIndex, containerIndex});
+        partIdToBranchMap[m_outcome->bodyNodes[chain.fromNodeIndex].partId][containerIndex]++;
     };
+    
+    // TODO: partIdToBranchMap
+
     
     const size_t neckIndex = 0;
     const size_t tailIndex = 1;
