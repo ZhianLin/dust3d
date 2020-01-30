@@ -30,7 +30,8 @@ private:
     struct BoneNoeChain
     {
         size_t fromNodeIndex;
-        std::vector<size_t> nodeIndices;
+        std::vector<std::vector<size_t>> nodeIndices;
+        std::vector<size_t> nodeChain;
         bool isSpine;
         std::vector<bool> nodeIsJointFlags;
         size_t attachNodeIndex;

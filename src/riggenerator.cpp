@@ -142,6 +142,14 @@ void RigGenerator::buildNeighborMap()
         PartEndpointsStitcher(&m_outcome->bodyNodes, &partEndpoints,
             &stitchResult));
     
+    //for (size_t i = 0; i < stitchResult.size(); ++i) {
+    //    printf("%s stitch => [%lu] %s %lu %f\r\n",
+    //        m_outcome->bodyNodes[partEndpoints[i].second].nodeId.toString().toUtf8().constData(),
+    //        i, stitchResult[i].first.first.toString().toUtf8().constData(),
+    //        stitchResult[i].first.second,
+    //        stitchResult[i].second);
+    //}
+    std::map<QUuid, std::vector<std::pair<std::pair<QUuid, size_t>, size_t>>> pendingPartEndpoints;
     for (size_t i = 0; i < stitchResult.size(); ++i) {
         const auto &endpoint = partEndpoints[i];
         const auto &neighbors = m_neighborMap[endpoint.second];
@@ -150,8 +158,27 @@ void RigGenerator::buildNeighborMap()
             distance2WithNeighbor = (m_outcome->bodyNodes[endpoint.second].origin - m_outcome->bodyNodes[*neighbors.begin()].origin).lengthSquared();
         }
         const auto &result = stitchResult[i];
-        if (result.second >= distance2WithNeighbor)
+        if (result.second >= distance2WithNeighbor) {
+            pendingPartEndpoints[endpoint.first].push_back({endpoint, i});
             continue;
+        }
+        auto fromNodeIndex = nodeIdToIndexMap[{endpoint.first, m_outcome->bodyNodes[endpoint.second].nodeId}];
+        auto toNodeIndex = nodeIdToIndexMap[{result.first.first, m_outcome->bodyNodes[result.first.second].nodeId}];
+        m_neighborMap[fromNodeIndex].insert(toNodeIndex);
+        m_neighborMap[toNodeIndex].insert(fromNodeIndex);
+    }
+    for (const auto &it: pendingPartEndpoints) {
+        if (it.second.size() <= 1)
+            continue;
+        auto bestMatch = std::min_element(it.second.begin(), it.second.end(), [&](
+                const std::pair<std::pair<QUuid, size_t>, size_t> &first,
+                const std::pair<std::pair<QUuid, size_t>, size_t> &second) {
+            const auto &firstStitchResult = stitchResult[first.second];
+            const auto &secondStitchResult = stitchResult[second.second];
+            return firstStitchResult.second < secondStitchResult.second;
+        });
+        const auto &endpoint = bestMatch->first;
+        const auto &result = stitchResult[bestMatch->second];
         auto fromNodeIndex = nodeIdToIndexMap[{endpoint.first, m_outcome->bodyNodes[endpoint.second].nodeId}];
         auto toNodeIndex = nodeIdToIndexMap[{result.first.first, m_outcome->bodyNodes[result.first.second].nodeId}];
         m_neighborMap[fromNodeIndex].insert(toNodeIndex);
@@ -260,7 +287,7 @@ void RigGenerator::buildBoneNodeChain()
                 break;
             }
         }
-        m_boneNodeChain.push_back({fromNodeIndex, boneNodeChain, isSpine, isJointFlags, attachNodeIndex});
+        m_boneNodeChain.push_back({fromNodeIndex, boneNodeIndices, boneNodeChain, isSpine, isJointFlags, attachNodeIndex});
     }
     for (size_t i = 0; i < m_boneNodeChain.size(); ++i) {
         const auto &chain = m_boneNodeChain[i];
@@ -328,7 +355,7 @@ void RigGenerator::attachLimbsToSpine()
         auto limbMiddle = (leftNode.origin + rightNode.origin) * 0.5;
         std::vector<std::pair<size_t, float>> distance2WithSpine;
         auto boneNodeChainIndex = m_spineChains[0];
-        const auto &nodeIndices = m_boneNodeChain[boneNodeChainIndex].nodeIndices;
+        const auto &nodeIndices = m_boneNodeChain[boneNodeChainIndex].nodeChain;
         distance2WithSpine.reserve(nodeIndices.size());
         for (size_t j = 0; j < nodeIndices.size(); ++j) {
             const auto &nodeIndex = nodeIndices[j];
@@ -574,7 +601,8 @@ void RigGenerator::computeSkinWeights()
             size_t containerIndex) {
         const auto &chain = m_boneNodeChain[chainIndex];
         for (const auto &it: chain.nodeIndices) {
-            nodeIndexToContainerMap->insert({it, containerIndex});
+            for (const auto &subIt: it)
+                nodeIndexToContainerMap->insert({subIt, containerIndex});
         }
         nodeIndexToContainerMap->insert({chain.fromNodeIndex, containerIndex});
     };
@@ -666,16 +694,16 @@ void RigGenerator::computeSkinWeights()
     for (auto &it: *m_resultWeights)
         it.second.finalizeWeights();
     
-    for (size_t i = 0; i < m_outcome->vertices.size(); ++i) {
-        auto findWeights = m_resultWeights->find(i);
-        if (findWeights == m_resultWeights->end()) {
-            const auto &sourceNode = m_outcome->vertexSourceNodes[i];
-            printf("NoWeight vertex index:%lu Source:%s %s\r\n",
-                i,
-                sourceNode.first.toString().toUtf8().constData(),
-                sourceNode.second.toString().toUtf8().constData());
-        }
-    }
+    //for (size_t i = 0; i < m_outcome->vertices.size(); ++i) {
+    //    auto findWeights = m_resultWeights->find(i);
+    //    if (findWeights == m_resultWeights->end()) {
+    //        const auto &sourceNode = m_outcome->vertexSourceNodes[i];
+    //        printf("NoWeight vertex index:%lu Source:%s %s\r\n",
+    //            i,
+    //            sourceNode.first.toString().toUtf8().constData(),
+    //            sourceNode.second.toString().toUtf8().constData());
+    //    }
+    //}
 }
 
 void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
@@ -718,9 +746,9 @@ void RigGenerator::extractBranchJoints()
 {
     auto extractJoints = [&](const BoneNoeChain &chain, std::vector<size_t> *joints) {
         joints->push_back(chain.fromNodeIndex);
-        for (size_t i = 0; i < chain.nodeIndices.size(); ++i) {
-            if (chain.nodeIsJointFlags[i] || i + 1 == chain.nodeIndices.size())
-                joints->push_back(chain.nodeIndices[i]);
+        for (size_t i = 0; i < chain.nodeChain.size(); ++i) {
+            if (chain.nodeIsJointFlags[i] || i + 1 == chain.nodeChain.size())
+                joints->push_back(chain.nodeChain[i]);
         }
     };
     if (!m_neckChains.empty())
@@ -744,14 +772,14 @@ void RigGenerator::extractSpineJoints()
     if (findTail != m_branchNodesMapByMark.end()) {
         m_spineJoints.push_back(findTail->second[0]);
     } else {
-        std::reverse(spine.nodeIndices.begin(), spine.nodeIndices.end());
+        std::reverse(spine.nodeChain.begin(), spine.nodeChain.end());
         std::reverse(spine.nodeIsJointFlags.begin(), spine.nodeIsJointFlags.end());
         for (auto &it: m_attachLimbsToSpineChainPositions) {
-            it = spine.nodeIndices.size() - 1 - it;
+            it = spine.nodeChain.size() - 1 - it;
         }
     }
     m_attachLimbsToSpineJointIndices.resize(m_attachLimbsToSpineChainPositions.size());
-    for (size_t i = 0; i < spine.nodeIndices.size(); ++i) {
+    for (size_t i = 0; i < spine.nodeChain.size(); ++i) {
         bool limbsAttached = false;
         for (size_t j = 0; j < m_attachLimbsToSpineChainPositions.size(); ++j) {
             if (i == m_attachLimbsToSpineChainPositions[j]) {
@@ -760,7 +788,7 @@ void RigGenerator::extractSpineJoints()
             }
         }
         if (limbsAttached || spine.nodeIsJointFlags[i]) {
-            m_spineJoints.push_back(spine.nodeIndices[i]);
+            m_spineJoints.push_back(spine.nodeChain[i]);
             continue;
         }
     }
