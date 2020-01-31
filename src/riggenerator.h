@@ -70,6 +70,8 @@ private:
     void attachLimbsToSpine();
     void extractSpineJoints();
     void extractBranchJoints();
+    void groupNodeIndices(const std::map<size_t, std::unordered_set<size_t>> &neighborMap,
+        std::vector<std::unordered_set<size_t>> *groups);
     void computeBranchSkinWeights(size_t fromBoneIndex,
         const QString &boneNamePrefix,
         const std::vector<size_t> &vertexIndices);

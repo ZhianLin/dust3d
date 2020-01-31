@@ -13,44 +13,51 @@
 #include "boundingboxmesh.h"
 #include "theme.h"
 
-class PartEndpointsStitcher
+class GroupEndpointsStitcher
 {
 public:
-    PartEndpointsStitcher(const std::vector<OutcomeNode> *nodes,
-            const std::vector<std::pair<QUuid, size_t>> *partEndpoints,
-            std::vector<std::pair<std::pair<QUuid, size_t>, float>> *stitchResult) :
+    GroupEndpointsStitcher(const std::vector<OutcomeNode> *nodes,
+            const std::vector<std::unordered_set<size_t>> *groups,
+            const std::vector<std::pair<size_t, size_t>> *groupEndpoints,
+            std::vector<std::pair<size_t, float>> *stitchResult) :
         m_nodes(nodes),
-        m_partEndpoints(partEndpoints),
+        m_groups(groups),
+        m_groupEndpoints(groupEndpoints),
         m_stitchResult(stitchResult)
     {
     }
     void operator()(const tbb::blocked_range<size_t> &range) const
     {
         for (size_t i = range.begin(); i != range.end(); ++i) {
-            std::vector<std::pair<std::pair<QUuid, size_t>, float>> distance2WithNodes;
-            const auto &endpoint = (*m_partEndpoints)[i];
+            std::vector<std::pair<size_t, float>> distance2WithNodes;
+            const auto &endpoint = (*m_groupEndpoints)[i];
             const auto &endpointNode = (*m_nodes)[endpoint.second];
-            for (size_t j = 0; j < m_nodes->size(); ++j) {
-                const auto &node = (*m_nodes)[j];
-                if (node.partId == endpoint.first ||
-                        node.mirroredByPartId == endpoint.first ||
-                        node.mirrorFromPartId == endpoint.first) {
+            for (size_t groupIndex = 0; groupIndex < m_groups->size(); ++groupIndex) {
+                if (endpoint.first == groupIndex)
                     continue;
+                for (const auto &j: (*m_groups)[groupIndex]) {
+                    const auto &node = (*m_nodes)[j];
+                    if (node.partId == endpointNode.partId ||
+                            node.mirroredByPartId == endpointNode.partId ||
+                            node.mirrorFromPartId == endpointNode.partId) {
+                        continue;
+                    }
+                    distance2WithNodes.push_back({j,
+                        (endpointNode.origin - node.origin).lengthSquared()});
                 }
-                distance2WithNodes.push_back({{node.partId, j},
-                    (endpointNode.origin - node.origin).lengthSquared()});
             }
             if (distance2WithNodes.empty())
                 continue;
-            (*m_stitchResult)[i] = *std::min_element(distance2WithNodes.begin(), distance2WithNodes.end(), [](const std::pair<std::pair<QUuid, size_t>, float> &first, const std::pair<std::pair<QUuid, size_t>, float> &second) {
+            (*m_stitchResult)[i] = *std::min_element(distance2WithNodes.begin(), distance2WithNodes.end(), [](const std::pair<size_t, float> &first, const std::pair<size_t, float> &second) {
                 return first.second < second.second;
             });
         }
     }
 private:
     const std::vector<OutcomeNode> *m_nodes = nullptr;
-    const std::vector<std::pair<QUuid, size_t>> *m_partEndpoints = nullptr;
-    std::vector<std::pair<std::pair<QUuid, size_t>, float>> *m_stitchResult = nullptr;
+    const std::vector<std::unordered_set<size_t>> *m_groups = nullptr;
+    const std::vector<std::pair<size_t, size_t>> *m_groupEndpoints = nullptr;
+    std::vector<std::pair<size_t, float>> *m_stitchResult = nullptr;
 };
 
 RigGenerator::RigGenerator(RigType rigType, const Outcome &outcome) :
@@ -105,6 +112,36 @@ const std::vector<std::pair<QtMsgType, QString>> &RigGenerator::messages()
     return m_messages;
 }
 
+void RigGenerator::groupNodeIndices(const std::map<size_t, std::unordered_set<size_t>> &neighborMap,
+        std::vector<std::unordered_set<size_t>> *groups)
+{
+    std::unordered_set<size_t> visited;
+    for (const auto &it: neighborMap) {
+        if (visited.find(it.first) != visited.end())
+            continue;
+        std::unordered_set<size_t> group;
+        std::queue<size_t> waitQueue;
+        visited.insert(it.first);
+        group.insert(it.first);
+        waitQueue.push(it.first);
+        while (!waitQueue.empty()) {
+            auto nodeIndex = waitQueue.front();
+            waitQueue.pop();
+            auto findNeighbor = neighborMap.find(nodeIndex);
+            if (findNeighbor != neighborMap.end()) {
+                for (const auto &neighbor: findNeighbor->second) {
+                    if (visited.find(neighbor) == visited.end()) {
+                        visited.insert(neighbor);
+                        group.insert(neighbor);
+                        waitQueue.push(neighbor);
+                    }
+                }
+            }
+        }
+        groups->push_back(group);
+    }
+}
+
 void RigGenerator::buildNeighborMap()
 {
     if (nullptr == m_outcome->triangleSourceNodes())
@@ -128,59 +165,43 @@ void RigGenerator::buildNeighborMap()
         m_neighborMap[findTarget->second].insert(findSource->second);
     }
     
-    std::vector<std::pair<QUuid, size_t>> partEndpoints;
-    for (const auto &it: m_neighborMap) {
-        if (it.second.size() >= 2) {
-            continue;
+    while (true) {
+        std::vector<std::unordered_set<size_t>> groups;
+        groupNodeIndices(m_neighborMap, &groups);
+        
+        if (groups.size() < 2)
+            break;
+        
+        std::vector<std::pair<size_t, size_t>> groupEndpoints;
+        for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex) {
+            const auto &group = groups[groupIndex];
+            for (const auto &nodeIndex: group) {
+                if (m_neighborMap[nodeIndex].size() >= 2)
+                    continue;
+                groupEndpoints.push_back({groupIndex, nodeIndex});
+            }
         }
-        const auto &node = m_outcome->bodyNodes[it.first];
-        partEndpoints.push_back({node.partId, it.first});
-    }
-    
-    std::vector<std::pair<std::pair<QUuid, size_t>, float>> stitchResult(partEndpoints.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, partEndpoints.size()),
-        PartEndpointsStitcher(&m_outcome->bodyNodes, &partEndpoints,
-            &stitchResult));
-    
-    //for (size_t i = 0; i < stitchResult.size(); ++i) {
-    //    printf("%s stitch => [%lu] %s %lu %f\r\n",
-    //        m_outcome->bodyNodes[partEndpoints[i].second].nodeId.toString().toUtf8().constData(),
-    //        i, stitchResult[i].first.first.toString().toUtf8().constData(),
-    //        stitchResult[i].first.second,
-    //        stitchResult[i].second);
-    //}
-    std::map<QUuid, std::vector<std::pair<std::pair<QUuid, size_t>, size_t>>> pendingPartEndpoints;
-    for (size_t i = 0; i < stitchResult.size(); ++i) {
-        const auto &endpoint = partEndpoints[i];
-        const auto &neighbors = m_neighborMap[endpoint.second];
-        float distance2WithNeighbor = std::numeric_limits<float>::max();
-        if (!neighbors.empty()) {
-            distance2WithNeighbor = (m_outcome->bodyNodes[endpoint.second].origin - m_outcome->bodyNodes[*neighbors.begin()].origin).lengthSquared();
-        }
-        const auto &result = stitchResult[i];
-        if (result.second >= distance2WithNeighbor) {
-            pendingPartEndpoints[endpoint.first].push_back({endpoint, i});
-            continue;
-        }
-        auto fromNodeIndex = nodeIdToIndexMap[{endpoint.first, m_outcome->bodyNodes[endpoint.second].nodeId}];
-        auto toNodeIndex = nodeIdToIndexMap[{result.first.first, m_outcome->bodyNodes[result.first.second].nodeId}];
-        m_neighborMap[fromNodeIndex].insert(toNodeIndex);
-        m_neighborMap[toNodeIndex].insert(fromNodeIndex);
-    }
-    for (const auto &it: pendingPartEndpoints) {
-        if (it.second.size() <= 1)
-            continue;
-        auto bestMatch = std::min_element(it.second.begin(), it.second.end(), [&](
-                const std::pair<std::pair<QUuid, size_t>, size_t> &first,
-                const std::pair<std::pair<QUuid, size_t>, size_t> &second) {
-            const auto &firstStitchResult = stitchResult[first.second];
-            const auto &secondStitchResult = stitchResult[second.second];
-            return firstStitchResult.second < secondStitchResult.second;
+        
+        if (groupEndpoints.empty())
+            break;
+        
+        std::vector<std::pair<size_t, float>> stitchResult(groupEndpoints.size(),
+            {m_outcome->bodyNodes.size(), std::numeric_limits<float>::max()});
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, groupEndpoints.size()),
+            GroupEndpointsStitcher(&m_outcome->bodyNodes, &groups, &groupEndpoints,
+                &stitchResult));
+        auto minDistantMatch = std::min_element(stitchResult.begin(), stitchResult.end(), [&](
+                const std::pair<size_t, float> &first,
+                const std::pair<size_t, float> &second) {
+            return first.second < second.second;
         });
-        const auto &endpoint = bestMatch->first;
-        const auto &result = stitchResult[bestMatch->second];
-        auto fromNodeIndex = nodeIdToIndexMap[{endpoint.first, m_outcome->bodyNodes[endpoint.second].nodeId}];
-        auto toNodeIndex = nodeIdToIndexMap[{result.first.first, m_outcome->bodyNodes[result.first.second].nodeId}];
+        if (minDistantMatch->first == m_outcome->bodyNodes.size())
+            break;
+
+        const auto &endpointNode = m_outcome->bodyNodes[groupEndpoints[minDistantMatch - stitchResult.begin()].second];
+        const auto &resultNode = m_outcome->bodyNodes[minDistantMatch->first];
+        auto fromNodeIndex = nodeIdToIndexMap[{endpointNode.partId, endpointNode.nodeId}];
+        auto toNodeIndex = nodeIdToIndexMap[{resultNode.partId, resultNode.nodeId}];
         m_neighborMap[fromNodeIndex].insert(toNodeIndex);
         m_neighborMap[toNodeIndex].insert(fromNodeIndex);
     }
