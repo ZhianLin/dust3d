@@ -25,6 +25,7 @@ struct OutcomeNode
     QUuid mirroredByPartId;
     BoneMark boneMark;
     QVector3D direction;
+    bool joined = true;
 };
 
 struct OutcomePaintNode

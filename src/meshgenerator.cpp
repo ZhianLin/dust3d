@@ -520,6 +520,7 @@ MeshCombiner::Mesh *MeshGenerator::combinePartMesh(const QString &partIdString, 
         outcomeNode.colorSolubility = colorSolubility;
         outcomeNode.boneMark = nodeInfo.boneMark;
         outcomeNode.mirroredByPartId = mirroredPartIdString;
+        outcomeNode.joined = partCache.joined;
         partCache.outcomeNodes.push_back(outcomeNode);
         if (xMirrored) {
             outcomeNode.partId = mirroredPartId;
@@ -1428,8 +1429,22 @@ void MeshGenerator::generate()
     collectUncombinedComponent(QUuid().toString());
     
     // Fetch nodes as body nodes before cloth nodes collecting
-    m_outcome->bodyNodes = m_outcome->nodes;
-    m_outcome->bodyEdges = m_outcome->edges;
+    std::set<std::pair<QUuid, QUuid>> bodyNodeMap;
+    m_outcome->bodyNodes.reserve(m_outcome->nodes.size());
+    for (const auto &it: m_outcome->nodes) {
+        if (it.joined) {
+            bodyNodeMap.insert({it.partId, it.nodeId});
+            m_outcome->bodyNodes.push_back(it);
+        }
+    }
+    m_outcome->bodyEdges.reserve(m_outcome->edges.size());
+    for (const auto &it: m_outcome->edges) {
+        if (bodyNodeMap.find(it.first) == bodyNodeMap.end())
+            continue;
+        if (bodyNodeMap.find(it.second) == bodyNodeMap.end())
+            continue;
+        m_outcome->bodyEdges.push_back(it);
+    }
     
     collectClothComponent(QUuid().toString());
     

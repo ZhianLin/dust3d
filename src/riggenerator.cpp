@@ -299,8 +299,17 @@ void RigGenerator::buildBoneNodeChain()
             }
         }
         removeBranchsFromNodes(&boneNodeIndices, &boneNodeChain);
+        //if (boneNodeChain.size() >= 3) {
+        //    const auto &headNode = m_outcome->bodyNodes[boneNodeChain[0]];
+        //    const auto &firstNode = m_outcome->bodyNodes[boneNodeChain[boneNodeChain.size() - 2]];
+        //    const auto &secondNode = m_outcome->bodyNodes[boneNodeChain[boneNodeChain.size() - 1]];
+        //    if ((secondNode.origin - headNode.origin).lengthSquared() <=
+        //            (firstNode.origin - headNode.origin).lengthSquared()) {
+        //        boneNodeChain.resize(boneNodeChain.size() - 1);
+        //    }
+        //}
         isJointFlags.resize(boneNodeChain.size(), false);
-        for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
+        for (size_t i = 0; i < boneNodeChain.size(); ++i) {
             for (const auto &nodeIndex: boneNodeIndices[i]) {
                 if (BoneMark::None == m_outcome->bodyNodes[nodeIndex].boneMark)
                     continue;
@@ -316,10 +325,19 @@ void RigGenerator::buildBoneNodeChain()
         const auto &isSpine = chain.isSpine;
         //printf("Chain[%lu] %s %s", i, BoneMarkToString(node.boneMark), isSpine ? "SPINE " : "");
         //printf("|");
-        //for (size_t j = 0; j < chain.nodeIndices.size(); ++j) {
-        //    printf("%lu%s ", chain.nodeIndices[j], chain.nodeIsJointFlags[j] ? "(JOINT)" : "");
+        //for (size_t j = 0; j < chain.nodeChain.size(); ++j) {
+        //    printf("%lu%s ", chain.nodeChain[j], chain.nodeIsJointFlags[j] ? "(JOINT)" : "");
         //}
         //printf("\r\n");
+        //for (size_t j = 0; j < chain.nodeChain.size(); ++j) {
+        //    const auto &node = m_outcome->bodyNodes[chain.nodeChain[j]];
+        //    printf("         >>%lu part:%s node:%s (%f,%f,%f)%s\r\n",
+        //        chain.nodeChain[j],
+        //        node.partId.toString().toUtf8().constData(),
+        //        node.nodeId.toString().toUtf8().constData(),
+        //        node.origin.x(), node.origin.y(), node.origin.z(),
+        //        chain.nodeIsJointFlags[j] ? "(JOINT)" : "");
+        //}
         if (isSpine) {
             m_spineChains.push_back(i);
             continue;
