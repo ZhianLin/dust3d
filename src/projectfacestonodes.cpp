@@ -109,25 +109,25 @@ void projectFacesToNodes(const std::vector<QVector3D> &vertices,
 {
     // Calculate the spheres which contained in bigger sphere,
     // these shperes will be replaced with the bigger shpere instead from the the source nodes
-    std::vector<std::tuple<QVector3D, float, size_t>> sourceNodesOrderedByRadius;
-    sourceNodesOrderedByRadius.reserve(sourceNodes.size());
-    for (size_t i = 0; i < sourceNodes.size(); ++i) {
-        const auto &source = sourceNodes[i];
-        sourceNodesOrderedByRadius.push_back({source.first, source.second, i});
-    }
-    std::sort(sourceNodesOrderedByRadius.begin(), sourceNodesOrderedByRadius.end(), [](
-            const std::tuple<QVector3D, float, size_t> &first,
-            const std::tuple<QVector3D, float, size_t> &second) {
-        return std::get<1>(first) < std::get<1>(second);
-    });
-    std::vector<size_t> sourceNodeParents(sourceNodesOrderedByRadius.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, sourceNodesOrderedByRadius.size()),
-        SphereParentFinder(&sourceNodesOrderedByRadius, &sourceNodeParents));
-    std::vector<size_t> sourceNodeAttachMap(sourceNodes.size());
-    for (size_t i = 0; i < sourceNodeParents.size(); ++i) {
-        sourceNodeAttachMap[std::get<2>(sourceNodesOrderedByRadius[i])] =
-            std::get<2>(sourceNodesOrderedByRadius[sourceNodeParents[i]]);
-    }
+    //std::vector<std::tuple<QVector3D, float, size_t>> sourceNodesOrderedByRadius;
+    //sourceNodesOrderedByRadius.reserve(sourceNodes.size());
+    //for (size_t i = 0; i < sourceNodes.size(); ++i) {
+    //    const auto &source = sourceNodes[i];
+    //    sourceNodesOrderedByRadius.push_back({source.first, source.second, i});
+    //}
+    //std::sort(sourceNodesOrderedByRadius.begin(), sourceNodesOrderedByRadius.end(), [](
+    //        const std::tuple<QVector3D, float, size_t> &first,
+    //        const std::tuple<QVector3D, float, size_t> &second) {
+    //    return std::get<1>(first) < std::get<1>(second);
+    //});
+    //std::vector<size_t> sourceNodeParents(sourceNodesOrderedByRadius.size());
+    //tbb::parallel_for(tbb::blocked_range<size_t>(0, sourceNodesOrderedByRadius.size()),
+    //    SphereParentFinder(&sourceNodesOrderedByRadius, &sourceNodeParents));
+    //std::vector<size_t> sourceNodeAttachMap(sourceNodes.size());
+    //for (size_t i = 0; i < sourceNodeParents.size(); ++i) {
+    //    sourceNodeAttachMap[std::get<2>(sourceNodesOrderedByRadius[i])] =
+    //        std::get<2>(sourceNodesOrderedByRadius[sourceNodeParents[i]]);
+    //}
     
     // Resolve the faces's source nodes
     faceSources->resize(faces.size(), std::numeric_limits<size_t>::max());
@@ -135,10 +135,10 @@ void projectFacesToNodes(const std::vector<QVector3D> &vertices,
         FacesToNearestNodesProjector(&vertices, &faces, &sourceNodes, faceSources));
     
     // Replace the source node which is contained in bigger sphere
-    for (size_t i = 0; i < faceSources->size(); ++i) {
-        auto &source = (*faceSources)[i];
-        if (source == std::numeric_limits<size_t>::max())
-            continue;
-        source = sourceNodeAttachMap[source];
-    }
+    //for (size_t i = 0; i < faceSources->size(); ++i) {
+    //    auto &source = (*faceSources)[i];
+    //    if (source == std::numeric_limits<size_t>::max())
+    //        continue;
+    //    source = sourceNodeAttachMap[source];
+    //}
 }
