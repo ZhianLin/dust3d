@@ -59,6 +59,8 @@ private:
     std::vector<size_t> m_tailJoints;
     std::vector<size_t> m_spineJoints;
     std::map<QString, int> m_boneNameToIndexMap;
+    ShaderVertex *m_debugEdgeVertices = nullptr;
+    int m_debugEdgeVerticesNum = 0;
     bool m_isSpineVertical = false;
     bool m_isSucceed = false;
     void buildNeighborMap();

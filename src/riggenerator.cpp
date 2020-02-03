@@ -165,13 +165,14 @@ void RigGenerator::buildNeighborMap()
         m_neighborMap[findTarget->second].insert(findSource->second);
     }
     
+    //std::vector<std::tuple<QVector3D, QVector3D, float, float, QColor>> debugBoxes;
+    
     while (true) {
         std::vector<std::unordered_set<size_t>> groups;
         groupNodeIndices(m_neighborMap, &groups);
-        
         if (groups.size() < 2)
             break;
-        
+
         std::vector<std::pair<size_t, size_t>> groupEndpoints;
         for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex) {
             const auto &group = groups[groupIndex];
@@ -197,14 +198,19 @@ void RigGenerator::buildNeighborMap()
         });
         if (minDistantMatch->first == m_outcome->bodyNodes.size())
             break;
-
-        const auto &endpointNode = m_outcome->bodyNodes[groupEndpoints[minDistantMatch - stitchResult.begin()].second];
-        const auto &resultNode = m_outcome->bodyNodes[minDistantMatch->first];
-        auto fromNodeIndex = nodeIdToIndexMap[{endpointNode.partId, endpointNode.nodeId}];
-        auto toNodeIndex = nodeIdToIndexMap[{resultNode.partId, resultNode.nodeId}];
+        
+        const auto &fromNodeIndex = groupEndpoints[minDistantMatch - stitchResult.begin()].second;
+        const auto &toNodeIndex = minDistantMatch->first;
         m_neighborMap[fromNodeIndex].insert(toNodeIndex);
         m_neighborMap[toNodeIndex].insert(fromNodeIndex);
+        
+        //const auto &fromNode = m_outcome->bodyNodes[fromNodeIndex];
+        //const auto &toNode = m_outcome->bodyNodes[toNodeIndex];
+        //debugBoxes.push_back(std::make_tuple(fromNode.origin, toNode.origin,
+        //    fromNode.radius, toNode.radius, Qt::red));
     }
+    
+    //m_debugEdgeVertices = buildBoundingBoxMeshEdges(debugBoxes, &m_debugEdgeVerticesNum);
 }
 
 void RigGenerator::removeBranchsFromNodes(const std::vector<std::vector<size_t>> *boneNodeIndices,
@@ -308,8 +314,8 @@ void RigGenerator::buildBoneNodeChain()
         //        boneNodeChain.resize(boneNodeChain.size() - 1);
         //    }
         //}
-        isJointFlags.resize(boneNodeChain.size(), false);
-        for (size_t i = 0; i < boneNodeChain.size(); ++i) {
+        isJointFlags.resize(boneNodeIndices.size(), false);
+        for (size_t i = 0; i < boneNodeIndices.size(); ++i) {
             for (const auto &nodeIndex: boneNodeIndices[i]) {
                 if (BoneMark::None == m_outcome->bodyNodes[nodeIndex].boneMark)
                     continue;
@@ -658,7 +664,7 @@ void RigGenerator::computeSkinWeights()
     
     if (!m_tailChains.empty())
         collectNodeIndices(m_tailChains[0], &nodeIndicesToBranchMap, tailIndex);
-    
+
     if (!m_spineChains.empty())
         collectNodeIndices(m_spineChains[0], &nodeIndicesToBranchMap, spineIndex);
     
@@ -678,8 +684,8 @@ void RigGenerator::computeSkinWeights()
         1);
     
     std::map<std::pair<QUuid, QUuid>, size_t> nodeIdToIndexMap;
-    for (size_t nodeIndex = 0; nodeIndex < m_outcome->nodes.size(); ++nodeIndex) {
-        const auto &node = m_outcome->nodes[nodeIndex];
+    for (size_t nodeIndex = 0; nodeIndex < m_outcome->bodyNodes.size(); ++nodeIndex) {
+        const auto &node = m_outcome->bodyNodes[nodeIndex];
         nodeIdToIndexMap[{node.partId, node.nodeId}] = nodeIndex;
     }
     for (size_t vertexIndex = 0; vertexIndex < m_outcome->vertices.size(); ++vertexIndex) {
@@ -994,12 +1000,19 @@ void RigGenerator::buildDemoMesh()
         const auto &resultBones = *m_resultBones;
         std::vector<std::tuple<QVector3D, QVector3D, float, float, QColor>> boxes;
         for (const auto &bone: resultBones) {
-            //if (bone.name.startsWith("Virtual") || bone.name.startsWith("Body"))
-            //    continue;
             boxes.push_back(std::make_tuple(bone.headPosition, bone.tailPosition,
                 bone.headRadius, bone.tailRadius, bone.color));
         }
         edgeVertices = buildBoundingBoxMeshEdges(boxes, &edgeVerticesNum);
+    }
+    
+    if (nullptr != m_debugEdgeVertices) {
+        delete[] edgeVertices;
+        edgeVertices = m_debugEdgeVertices;
+        m_debugEdgeVertices = nullptr;
+        
+        edgeVerticesNum = m_debugEdgeVerticesNum;
+        m_debugEdgeVerticesNum = 0;
     }
     
     m_resultMesh = new MeshLoader(triangleVertices, triangleVerticesNum,
