@@ -76,7 +76,8 @@ private:
         std::vector<std::unordered_set<size_t>> *groups);
     void computeBranchSkinWeights(size_t fromBoneIndex,
         const QString &boneNamePrefix,
-        const std::vector<size_t> &vertexIndices);
+        const std::vector<size_t> &vertexIndices,
+        std::vector<size_t> *discardedVertexIndices=nullptr);
     void splitByNodeIndex(size_t nodeIndex,
         std::unordered_set<size_t> *left,
         std::unordered_set<size_t> *right);

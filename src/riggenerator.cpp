@@ -542,7 +542,7 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = nextNode.origin;
             bone.headRadius = currentNode.radius;
             bone.tailRadius = nextNode.radius;
-            bone.color = BoneMarkToColor(BoneMark::Limb);
+            bone.color = 0 == limbJointIndex % 2 ? BoneMarkToColor(BoneMark::Limb) : BoneMarkToColor(BoneMark::Joint);
             bone.name = chainName + QString("_Joint") + QString::number(limbJointIndex + 1);
             bone.index = m_resultBones->size();
             m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
@@ -595,20 +595,30 @@ void RigGenerator::buildSkeleton()
     }
     
     if (!m_tailJoints.empty()) {
-        {
-            const auto &spineJointIndex = rootSpineJointIndex;
-            const auto &spineNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
-            const auto &tailFirstNode = m_outcome->bodyNodes[m_tailJoints[0]];
+        for (int spineJointIndex = rootSpineJointIndex;
+                spineJointIndex >= 0;
+                --spineJointIndex) {
+            const auto &currentNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
+            const auto &nextNode = spineJointIndex > 0 ?
+                m_outcome->bodyNodes[m_spineJoints[spineJointIndex - 1]] :
+                m_outcome->bodyNodes[m_tailJoints[0]];
             RiggerBone bone;
-            bone.headPosition = spineNode.origin;
-            bone.tailPosition = tailFirstNode.origin;
-            bone.headRadius = spineNode.radius;
-            bone.tailRadius = tailFirstNode.radius;
+            bone.headPosition = currentNode.origin;
+            bone.tailPosition = nextNode.origin;
+            bone.headRadius = currentNode.radius;
+            bone.tailRadius = nextNode.radius;
             bone.color = Theme::white;
-            bone.name = QString("Virtual_Body_Tail");
+            bone.name = QString("Spine0") + QString::number(rootSpineJointIndex - spineJointIndex + 1);
             bone.index = m_resultBones->size();
             m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
+            if ((int)rootSpineJointIndex == spineJointIndex) {
+                auto parentName = QString("Body");
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            } else {
+                auto parentName = QString("Spine0") + QString::number(rootSpineJointIndex - spineJointIndex);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            }
         }
     
         for (size_t tailJointIndex = 0;
@@ -621,13 +631,16 @@ void RigGenerator::buildSkeleton()
             bone.tailPosition = nextNode.origin;
             bone.headRadius = currentNode.radius;
             bone.tailRadius = nextNode.radius;
-            bone.color = BoneMarkToColor(BoneMark::Tail);
+            bone.color = 0 == tailJointIndex % 2 ? BoneMarkToColor(BoneMark::Tail) : BoneMarkToColor(BoneMark::Joint);
             bone.name = QString("Tail_Joint") + QString::number(tailJointIndex + 1);
             bone.index = m_resultBones->size();
             m_boneNameToIndexMap.insert({bone.name, (int)bone.index});
             m_resultBones->push_back(bone);
             if (tailJointIndex > 0) {
                 auto parentName = QString("Tail_Joint") + QString::number(tailJointIndex);
+                (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
+            } else {
+                auto parentName = QString("Spine0") + QString::number(rootSpineJointIndex + 1);
                 (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
@@ -691,31 +704,31 @@ void RigGenerator::computeSkinWeights()
     for (size_t vertexIndex = 0; vertexIndex < m_outcome->vertices.size(); ++vertexIndex) {
         const auto &vertexSourceId = m_outcome->vertexSourceNodes[vertexIndex];
         auto findNodeIndex = nodeIdToIndexMap.find(vertexSourceId);
-        if (findNodeIndex == nodeIdToIndexMap.end())
+        if (findNodeIndex == nodeIdToIndexMap.end()) {
+            vertexBranches[spineIndex].push_back(vertexIndex);
             continue;
+        }
         const auto &nodeIndex = findNodeIndex->second;
         auto findBranch = nodeIndicesToBranchMap.find(nodeIndex);
-        if (findBranch == nodeIndicesToBranchMap.end())
+        if (findBranch == nodeIndicesToBranchMap.end()) {
+            vertexBranches[spineIndex].push_back(vertexIndex);
             continue;
+        }
         vertexBranches[findBranch->second].push_back(vertexIndex);
     }
     
     auto findNeckBoneIndex = m_boneNameToIndexMap.find(QString("Neck_Joint1"));
     if (findNeckBoneIndex != m_boneNameToIndexMap.end()) {
         computeBranchSkinWeights(findNeckBoneIndex->second,
-            QString("Neck_"), vertexBranches[neckIndex]);
+            QString("Neck_"), vertexBranches[neckIndex],
+            &vertexBranches[spineIndex]);
     }
     
     auto findTailBoneIndex = m_boneNameToIndexMap.find(QString("Tail_Joint1"));
     if (findTailBoneIndex != m_boneNameToIndexMap.end()) {
         computeBranchSkinWeights(findTailBoneIndex->second,
-            QString("Tail_"), vertexBranches[tailIndex]);
-    }
-    
-    auto findSpineBoneIndex = m_boneNameToIndexMap.find(QString("Spine1"));
-    if (findSpineBoneIndex != m_boneNameToIndexMap.end()) {
-        computeBranchSkinWeights(findSpineBoneIndex->second,
-            QString("Spine"), vertexBranches[spineIndex]);
+            QString("Tail_"), vertexBranches[tailIndex],
+            &vertexBranches[spineIndex]);
     }
     
     for (size_t i = 0; i < m_leftLimbChains.size(); ++i) {
@@ -723,7 +736,8 @@ void RigGenerator::computeSkinWeights()
         auto findLimbBoneIndex = m_boneNameToIndexMap.find(namePrefix + "Joint1");
         if (findLimbBoneIndex != m_boneNameToIndexMap.end()) {
             computeBranchSkinWeights(findLimbBoneIndex->second,
-                namePrefix, vertexBranches[limbStartIndex + i]);
+                namePrefix, vertexBranches[limbStartIndex + i],
+                &vertexBranches[spineIndex]);
         }
     }
     
@@ -732,8 +746,21 @@ void RigGenerator::computeSkinWeights()
         auto findLimbBoneIndex = m_boneNameToIndexMap.find(namePrefix + "Joint1");
         if (findLimbBoneIndex != m_boneNameToIndexMap.end()) {
             computeBranchSkinWeights(findLimbBoneIndex->second,
-                namePrefix, vertexBranches[limbStartIndex + m_leftLimbChains.size() + i]);
+                namePrefix, vertexBranches[limbStartIndex + m_leftLimbChains.size() + i],
+                &vertexBranches[spineIndex]);
         }
+    }
+    
+    auto findSpineBoneIndex = m_boneNameToIndexMap.find(QString("Spine1"));
+    if (findSpineBoneIndex != m_boneNameToIndexMap.end()) {
+        computeBranchSkinWeights(findSpineBoneIndex->second,
+            QString("Spine"), vertexBranches[spineIndex]);
+    }
+    
+    auto findBackSpineBoneIndex = m_boneNameToIndexMap.find(QString("Spine01"));
+    if (findBackSpineBoneIndex != m_boneNameToIndexMap.end()) {
+        computeBranchSkinWeights(findBackSpineBoneIndex->second,
+            QString("Spine"), vertexBranches[spineIndex]);
     }
     
     for (auto &it: *m_resultWeights)
@@ -753,10 +780,23 @@ void RigGenerator::computeSkinWeights()
 
 void RigGenerator::computeBranchSkinWeights(size_t fromBoneIndex,
         const QString &boneNamePrefix,
-        const std::vector<size_t> &vertexIndices)
+        const std::vector<size_t> &vertexIndices,
+        std::vector<size_t> *discardedVertexIndices)
 {
     size_t boneIndex = fromBoneIndex;
-    std::vector<size_t> remainVertexIndices = vertexIndices;
+    const auto &bone = (*m_resultBones)[boneIndex];
+    std::vector<size_t> remainVertexIndices;
+    auto forward = (bone.tailPosition - bone.headPosition).normalized();
+    for (const auto &vertexIndex: vertexIndices) {
+        const auto &position = m_outcome->vertices[vertexIndex];
+        auto direction = (position - bone.headPosition).normalized();
+        if (QVector3D::dotProduct(direction, forward) >= 0) {
+            remainVertexIndices.push_back(vertexIndex);
+        } else {
+            if (nullptr != discardedVertexIndices)
+                discardedVertexIndices->push_back(vertexIndex);
+        }
+    }
     while (true) {
         const auto &bone = (*m_resultBones)[boneIndex];
         if (!bone.name.startsWith(boneNamePrefix))
