@@ -513,7 +513,7 @@ void RigGenerator::buildSkeleton()
         const auto &spineJointIndex = m_attachLimbsToSpineJointIndices[limbIndex];
         const auto &spineNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
         const auto &limbFirstNode = m_outcome->bodyNodes[limbJoints[limbIndex][0]];
-        const auto &parentIndex = attachedBoneIndex(spineJointIndex);;
+        const auto &parentIndex = attachedBoneIndex(spineJointIndex);
         RiggerBone bone;
         bone.headPosition = spineNode.origin;
         bone.tailPosition = limbFirstNode.origin;
@@ -595,9 +595,12 @@ void RigGenerator::buildSkeleton()
     }
     
     if (!m_tailJoints.empty()) {
+        QString nearestSpine = "Body";
         for (int spineJointIndex = rootSpineJointIndex;
                 spineJointIndex >= 0;
                 --spineJointIndex) {
+            if (m_spineJoints[spineJointIndex] == m_tailJoints[0])
+                break;
             const auto &currentNode = m_outcome->bodyNodes[m_spineJoints[spineJointIndex]];
             const auto &nextNode = spineJointIndex > 0 ?
                 m_outcome->bodyNodes[m_spineJoints[spineJointIndex - 1]] :
@@ -619,6 +622,7 @@ void RigGenerator::buildSkeleton()
                 auto parentName = QString("Spine0") + QString::number(rootSpineJointIndex - spineJointIndex);
                 (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
+            nearestSpine = bone.name;
         }
     
         for (size_t tailJointIndex = 0;
@@ -640,13 +644,22 @@ void RigGenerator::buildSkeleton()
                 auto parentName = QString("Tail_Joint") + QString::number(tailJointIndex);
                 (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             } else {
-                auto parentName = QString("Spine0") + QString::number(rootSpineJointIndex + 1);
+                auto parentName = nearestSpine;
                 (*m_resultBones)[m_boneNameToIndexMap[parentName]].children.push_back(bone.index);
             }
         }
     }
     
     m_isSucceed = true;
+    
+    for (size_t i = 0; i < m_resultBones->size(); ++i) {
+        const auto &bone = (*m_resultBones)[i];
+        std::cout << "bone:" << bone.name.toUtf8().constData() << " " << std::endl;
+        for (const auto &childIndex: bone.children) {
+            const auto &child = (*m_resultBones)[childIndex];
+            std::cout << "    child:" << child.name.toUtf8().constData() << " " << std::endl;
+        }
+    }
 }
 
 void RigGenerator::computeSkinWeights()
@@ -859,6 +872,7 @@ void RigGenerator::extractSpineJoints()
     } else {
         std::reverse(spine.nodeChain.begin(), spine.nodeChain.end());
         std::reverse(spine.nodeIsJointFlags.begin(), spine.nodeIsJointFlags.end());
+        std::reverse(m_attachLimbsToSpineChainPositions.begin(), m_attachLimbsToSpineChainPositions.end());
         for (auto &it: m_attachLimbsToSpineChainPositions) {
             it = spine.nodeChain.size() - 1 - it;
         }
